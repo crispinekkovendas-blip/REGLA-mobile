@@ -64,7 +64,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.imoveisregla.client.LocalAppContainer
 import br.com.imoveisregla.core.data.SessionState
 import br.com.imoveisregla.core.designsystem.ButtonKind
-import br.com.imoveisregla.core.designsystem.DemoBanner
 import br.com.imoveisregla.core.designsystem.ErrorState
 import br.com.imoveisregla.core.designsystem.LoadingState
 import br.com.imoveisregla.core.designsystem.Regla
@@ -81,7 +80,6 @@ fun ProfileScreen(onEditProfile: () -> Unit, onDocuments: () -> Unit, onLogin: (
     LaunchedEffect(Unit) { vm.refresh() }
 
     Column(Modifier.fillMaxSize().background(Regla.NavySoft)) {
-        if (!container.isLive) DemoBanner()
         when (val s = state.session) {
             SessionState.Loading -> LoadingState()
             SessionState.SignedOut -> SignedOutProfile(onLogin)

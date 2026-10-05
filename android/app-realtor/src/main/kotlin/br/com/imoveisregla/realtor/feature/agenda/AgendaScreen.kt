@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import br.com.imoveisregla.core.designsystem.DemoBanner
 import br.com.imoveisregla.core.designsystem.EmptyState
 import br.com.imoveisregla.core.designsystem.ErrorState
 import br.com.imoveisregla.core.designsystem.LoadingState
@@ -77,7 +76,6 @@ fun AgendaScreen(onOpenListing: (Long) -> Unit) {
 
     Scaffold(containerColor = Regla.NavySoft, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (!container.isLive) DemoBanner()
             Text(
                 "Agenda",
                 style = MaterialTheme.typography.headlineMedium,

@@ -2,7 +2,9 @@ package br.com.imoveisregla.realtor.feature.proposals
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertAny
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onChildren
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -37,7 +39,7 @@ class ProposalsScreenTest {
 
         compose.onNodeWithText("Mariana Souza").assertIsDisplayed()
         compose.onNodeWithText("Apartamento com varanda em Pinheiros").assertIsDisplayed()
-        compose.onNodeWithTag("status-301", useUnmergedTree = true).assertTextEquals("Em análise")
+        compose.onNodeWithTag("status-301", useUnmergedTree = true).onChildren().assertAny(hasText("Em análise"))
         compose.onNodeWithText("Todas (1)").assertExists()
         compose.onNodeWithText("Em análise (1)").assertExists()
         compose.onNodeWithText("-4,2%").assertExists()

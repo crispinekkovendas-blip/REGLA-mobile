@@ -65,7 +65,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.imoveisregla.core.designsystem.ButtonKind
-import br.com.imoveisregla.core.designsystem.DemoBanner
 import br.com.imoveisregla.core.designsystem.EmptyState
 import br.com.imoveisregla.core.designsystem.ErrorState
 import br.com.imoveisregla.core.designsystem.LoadingState
@@ -99,7 +98,6 @@ fun ProposalsScreen(onOpenApplication: (Long) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize().background(Regla.NavySoft)) {
-        if (!container.isLive) DemoBanner()
         Text(
             "Propostas",
             style = MaterialTheme.typography.headlineMedium,

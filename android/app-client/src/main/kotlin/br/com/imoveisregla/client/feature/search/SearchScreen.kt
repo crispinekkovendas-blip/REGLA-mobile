@@ -51,7 +51,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.imoveisregla.client.LocalAppContainer
 import br.com.imoveisregla.core.designsystem.ButtonKind
-import br.com.imoveisregla.core.designsystem.DemoBanner
 import br.com.imoveisregla.core.designsystem.EmptyState
 import br.com.imoveisregla.core.designsystem.ErrorState
 import br.com.imoveisregla.core.designsystem.LoadingState
@@ -86,7 +85,6 @@ fun SearchScreen(onOpenListing: (Long) -> Unit) {
         containerColor = Regla.NavySoft,
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (!container.isLive) DemoBanner()
             SearchHeader(
                 state = state,
                 onQuery = vm::setQuery,
