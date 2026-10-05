@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="regla_navy">#0B1F3A</color>
+    <color name="regla_navy_soft">#F1F4F9</color>
+    <color name="regla_coral">#FF6B35</color>
+
+    <style name="Theme.ReglaCorretor" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/regla_navy_soft</item>
+        <item name="android:colorPrimary">@color/regla_navy</item>
+        <item name="android:colorAccent">@color/regla_coral</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
