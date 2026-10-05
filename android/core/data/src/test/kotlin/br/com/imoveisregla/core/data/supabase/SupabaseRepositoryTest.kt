@@ -274,8 +274,14 @@ class SupabaseRepositoryTest {
         assertEquals(1, rows.size)
         val c = calls.single()
         assertEquals("/rest/v1/showings", c.path)
-        assertEquals(listOf("gte.2026-10-06T00:00-03:00", "lt.2026-10-07T00:00-03:00").toSet(), c.url.parameters.getAll("starts_at")!!.toSet())
+        assertRange(c, "2026-10-06T00:00-03:00", "2026-10-07T00:00-03:00")
         assertEquals("starts_at.asc.nullslast", c.param("order"))
+    }
+
+    private fun assertRange(c: Call, from: String, to: String) {
+        assertEquals(null, c.param("starts_at"))
+        val and = c.param("and")!!.replace("\"", "")
+        assertEquals("(starts_at.gte.$from,starts_at.lt.$to)", and)
     }
 
     @Test
@@ -291,10 +297,7 @@ class SupabaseRepositoryTest {
         assertEquals("eq.inbox", byTable["inquiries"]!!.param("stage"))
         assertEquals("in.(submitted,under_review)", byTable["applications"]!!.param("status"))
         assertEquals("eq.live", byTable["listings"]!!.param("status"))
-        assertEquals(
-            setOf("gte.2026-10-06T00:00-03:00", "lt.2026-10-07T00:00-03:00"),
-            byTable["showings"]!!.url.parameters.getAll("starts_at")!!.toSet(),
-        )
+        assertRange(byTable["showings"]!!, "2026-10-06T00:00-03:00", "2026-10-07T00:00-03:00")
     }
 
     @Test

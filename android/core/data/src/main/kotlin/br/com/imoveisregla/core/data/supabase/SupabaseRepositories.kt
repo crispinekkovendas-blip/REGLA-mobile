@@ -561,9 +561,13 @@ internal class SupabaseAgendaRepository(private val client: SupabaseClient) : Ag
 
     override suspend fun range(fromIso: String, toIso: String): List<Showing> = remote {
         client.from("showings").select(Columns.raw(Selects.SHOWING)) {
+            // supabase-kt sends only the first value per query key, so a two-sided range on one
+            // column must go through and=(…).
             filter {
-                gte("starts_at", fromIso)
-                lt("starts_at", toIso)
+                and {
+                    gte("starts_at", fromIso)
+                    lt("starts_at", toIso)
+                }
             }
             order("starts_at", Order.ASCENDING)
         }.decodeList<Showing>()
@@ -607,8 +611,10 @@ internal class SupabaseDashboardRepository(
             }
             val visits = async {
                 countRows("showings") {
-                    gte("starts_at", start)
-                    lt("starts_at", end)
+                    and {
+                        gte("starts_at", start)
+                        lt("starts_at", end)
+                    }
                 }
             }
             val live = async { countRows("listings") { eq("status", wire(ListingStatus.LIVE)) } }
