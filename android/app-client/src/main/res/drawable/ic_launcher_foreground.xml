@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- REGLA launcher foreground: coral "R" monogram inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- stem + bowl, with the counter cut out -->
+    <path
+        android:fillColor="@color/regla_coral"
+        android:fillType="evenOdd"
+        android:pathData="M37,30 L59,30 A13,13 0 0 1 59,56 L48,56 L48,78 L37,78 Z M48,39 L48,47 L58,47 A4,4 0 0 0 58,39 Z" />
+    <!-- leg -->
+    <path
+        android:fillColor="@color/regla_coral"
+        android:pathData="M53,56 L64,56 L76,78 L64,78 Z" />
+</vector>
