@@ -1,17 +1,24 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "REGLA",
+    "slug": "regla-client",
+    "scheme": "regla",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "br.com.imoveisregla.client",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Permita o acesso às fotos para enviar seus documentos.",
+        "NSCameraUsageDescription": "Permita o acesso à câmera para fotografar seus documentos."
+      }
     },
     "android": {
+      "package": "br.com.imoveisregla.client",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0B1F3A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -19,14 +26,42 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "name": "REGLA Imóveis",
+      "themeColor": "#0B1F3A"
     },
     "plugins": [
-      "expo-router",
-      "expo-splash-screen",
+      [
+        "expo-router",
+        {
+          "origin": "https://imoveisregla.com.br"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B1F3A"
+        }
+      ],
       "expo-image",
       "expo-secure-store",
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita o acesso às fotos para enviar seus documentos.",
+          "cameraPermission": "Permita o acesso à câmera para fotografar seus documentos."
+        }
+      ],
+      "expo-document-picker"
+    ],
+    "experiments": {
+      "typedRoutes": false,
+      "tsconfigPaths": true
+    }
   }
 }

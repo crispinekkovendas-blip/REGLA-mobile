@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24
+
+jobs:
+  shared:
+    name: shared (typecheck + vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w @regla/shared
+      - run: npm test -w @regla/shared
+
+  app:
+    name: ${{ matrix.app }} (typecheck + jest + expo export)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [client, realtor]
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-dummy
+      EXPO_NO_TELEMETRY: 1
+      CI: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w @regla/${{ matrix.app }}
+      - run: npm test -w @regla/${{ matrix.app }} -- --passWithNoTests
+      - name: expo export (web + android bundles)
+        working-directory: apps/${{ matrix.app }}
+        run: npx expo export --platform web --platform android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-dist
+          path: apps/${{ matrix.app }}/dist
+          if-no-files-found: error
+          retention-days: 14
+
+  database:
+    name: database (migrations x2 + RLS smoke)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: psql client
+        run: psql --version || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - run: bash supabase/test/run.sh
