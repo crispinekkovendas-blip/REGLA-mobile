@@ -6,5 +6,5 @@ web-build/
 .env
 .env.local
 coverage/
-ios/
-android/
+apps/*/ios/
+apps/*/android/
