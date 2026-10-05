@@ -1,6 +1,8 @@
 package br.com.imoveisregla.client
 
+import android.graphics.Color
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,7 +23,11 @@ val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("AppConta
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app uses a light palette only: keep dark system-bar icons even when the device is in dark mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         setContent {
             CompositionLocalProvider(LocalAppContainer provides ClientGraph.container) {
                 ReglaTheme { ClientApp() }

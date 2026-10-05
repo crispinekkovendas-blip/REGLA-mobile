@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window theme for the Compose activity. Edge-to-edge is enabled in MainActivity;
+         system bars are transparent and Compose pads content with window insets. -->
+    <style name="Theme.Regla" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/regla_navy_soft</item>
+        <item name="android:colorPrimary">@color/regla_navy</item>
+        <item name="android:colorPrimaryDark">@color/regla_navy</item>
+        <item name="android:colorAccent">@color/regla_coral</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="regla_navy">#FF0B1F3A</color>
+    <color name="regla_navy_soft">#FFF1F4F9</color>
+    <color name="regla_coral">#FFFF6B35</color>
+    <color name="regla_white">#FFFFFFFF</color>
+</resources>

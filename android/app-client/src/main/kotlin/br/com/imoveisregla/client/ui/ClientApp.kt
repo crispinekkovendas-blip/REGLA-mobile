@@ -1,13 +1,25 @@
 package br.com.imoveisregla.client.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import br.com.imoveisregla.client.LocalAppContainer
 import br.com.imoveisregla.client.feature.apply.ApplyScreen
 import br.com.imoveisregla.client.feature.auth.LoginScreen
 import br.com.imoveisregla.client.feature.auth.SignupScreen
@@ -32,16 +44,52 @@ import br.com.imoveisregla.client.nav.ProposalsRoute
 import br.com.imoveisregla.client.nav.SearchRoute
 import br.com.imoveisregla.client.nav.SignupRoute
 import br.com.imoveisregla.client.nav.VisitsRoute
+import br.com.imoveisregla.core.designsystem.DemoBanner
+import br.com.imoveisregla.core.designsystem.Regla
+
+/** Selects a bottom tab: single top, saving/restoring each tab's back stack. */
+internal fun NavHostController.navigateToTab(tab: ClientTab) {
+    navigate(tab.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+internal fun NavDestination?.isTab(tab: ClientTab): Boolean =
+    this?.hierarchy?.any { it.hasRoute(tab.route::class) } == true
 
 /** App shell: bottom navigation + NavHost. Owned by the auth/shell feature. */
 @Composable
-fun ClientApp() {
-    val nav = rememberNavController()
-    val openListing: (Long) -> Unit = { nav.navigate(ListingDetailRoute(it)) }
-    val requireLogin: () -> Unit = { nav.navigate(LoginRoute) }
+fun ClientApp(nav: NavHostController = rememberNavController()) {
+    val container = LocalAppContainer.current
+    val backStackEntry by nav.currentBackStackEntryAsState()
+    val destination = backStackEntry?.destination
+    val showBottomBar = destination == null || ClientTab.entries.any { destination.isTab(it) }
 
-    Scaffold { padding ->
-        NavHost(nav, startDestination = SearchRoute, modifier = Modifier.padding(padding)) {
+    val openListing: (Long) -> Unit = { nav.navigate(ListingDetailRoute(it)) }
+    val requireLogin: () -> Unit = { nav.navigate(LoginRoute) { launchSingleTop = true } }
+
+    Scaffold(
+        topBar = {
+            if (!container.isLive) {
+                Box(Modifier.background(Regla.WarnSoft).statusBarsPadding()) { DemoBanner() }
+            }
+        },
+        bottomBar = {
+            if (showBottomBar) {
+                ClientBottomBar(
+                    isSelected = { destination.isTab(it) },
+                    onSelect = { nav.navigateToTab(it) },
+                )
+            }
+        },
+    ) { padding ->
+        NavHost(
+            nav,
+            startDestination = SearchRoute,
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding),
+        ) {
             composable<SearchRoute> { SearchScreen(onOpenListing = openListing) }
             composable<FavoritesRoute> { FavoritesScreen(onOpenListing = openListing, onRequireLogin = requireLogin) }
             composable<VisitsRoute> { VisitsScreen(onOpenListing = openListing, onRequireLogin = requireLogin) }
@@ -69,11 +117,17 @@ fun ClientApp() {
             }
             composable<BookVisitRoute> { entry ->
                 val r = entry.toRoute<BookVisitRoute>()
-                BookVisitScreen(listingId = r.listingId, onBack = { nav.popBackStack() }, onDone = { nav.navigate(VisitsRoute) })
+                BookVisitScreen(
+                    listingId = r.listingId, onBack = { nav.popBackStack() },
+                    onDone = { nav.navigateToTab(ClientTab.Visits) },
+                )
             }
             composable<ApplyRoute> { entry ->
                 val r = entry.toRoute<ApplyRoute>()
-                ApplyScreen(listingId = r.listingId, onBack = { nav.popBackStack() }, onDone = { nav.navigate(ProposalsRoute) })
+                ApplyScreen(
+                    listingId = r.listingId, onBack = { nav.popBackStack() },
+                    onDone = { nav.navigateToTab(ClientTab.Proposals) },
+                )
             }
             composable<LoginRoute> {
                 LoginScreen(onLoggedIn = { nav.popBackStack() }, onSignup = { nav.navigate(SignupRoute) }, onBack = { nav.popBackStack() })
