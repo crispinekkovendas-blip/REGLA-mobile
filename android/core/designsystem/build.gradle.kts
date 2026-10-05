@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "br.com.imoveisregla.core.designsystem"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig { minSdk = 26 }
     buildFeatures { compose = true }
     compileOptions {

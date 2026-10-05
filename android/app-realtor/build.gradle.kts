@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "br.com.imoveisregla.realtor"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "br.com.imoveisregla.realtor"
         minSdk = 26

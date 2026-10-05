@@ -120,8 +120,8 @@ class FakeBackend(
             .filter { it.status == ListingStatus.LIVE }
             .filter { filters.city == null || it.city == filters.city }
             .filter { filters.type == null || it.type == filters.type }
-            .filter { filters.minBeds == null || it.beds >= filters.minBeds }
-            .filter { filters.maxPrice == null || it.price <= filters.maxPrice }
+            .filter { l -> filters.minBeds?.let { l.beds >= it } ?: true }
+            .filter { l -> filters.maxPrice?.let { l.price <= it } ?: true }
             .filter {
                 val q = filters.query.trim()
                 q.isEmpty() || listOf(it.title, it.neighborhood, it.city).any { f -> f.contains(q, ignoreCase = true) }

@@ -18,7 +18,7 @@ fun secret(name: String): String {
 
 android {
     namespace = "br.com.imoveisregla.core.data"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         minSdk = 26
         buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
