@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Navy "R" centred inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#0B1F3A"
+        android:fillType="evenOdd"
+        android:pathData="M38,32 L55,32 C62.7,32 69,38.3 69,46 C69,51.6 65.7,56.4 60.9,58.6 L70,76 L58.6,76 L50.6,60 L48.5,60 L48.5,76 L38,76 Z M48.5,41 L48.5,51 L55,51 C57.8,51 60,48.8 60,46 C60,43.2 57.8,41 55,41 Z" />
+</vector>
