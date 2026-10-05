@@ -198,7 +198,7 @@ private fun SignedInProfile(
 
         Surface(shape = RoundedCornerShape(Regla.RadiusCard), color = Regla.Surface, modifier = Modifier.fillMaxWidth()) {
             Column {
-                MenuRow(Icons.Outlined.Badge, "Meu cadastro", "Dados pessoais, renda e moradia", onEditProfile)
+                MenuRow(Icons.Outlined.Badge, "Meu cadastro", "Dados pessoais, renda e moradia", onClick = onEditProfile)
                 HorizontalDivider(color = Regla.Line)
                 MenuRow(
                     Icons.Outlined.Folder, "Meus documentos",
@@ -207,7 +207,7 @@ private fun SignedInProfile(
                         1 -> "1 documento"
                         else -> "${state.documentCount} documentos"
                     },
-                    onDocuments,
+                    onClick = onDocuments,
                 )
                 HorizontalDivider(color = Regla.Line)
                 MenuRow(Icons.AutoMirrored.Outlined.Chat, "Falar com a REGLA", "Atendimento pelo WhatsApp") {
