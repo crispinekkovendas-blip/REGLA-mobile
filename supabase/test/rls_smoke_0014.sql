@@ -14,6 +14,17 @@ exception when insufficient_privilege then
 end $$;
 grant execute on function public.test_expect_denied(text) to authenticated;
 
+-- True when a statement fails with no_data_found (P0002) — "not found", no existence leak.
+create or replace function public.test_expect_hidden(sql text) returns boolean language plpgsql as $$
+begin
+    execute sql;
+    return false;
+exception when no_data_found then
+    return true;
+end $$;
+grant execute on function public.test_expect_hidden(text) to authenticated;
+grant execute on function public.test_expect_denied(text) to anon;
+
 -- ─── u1 sends a proposta on listing 3 (no documents needed) ───────────
 begin;
 select set_config('request.jwt.claim.sub', '11111111-0000-0000-0000-000000000001', true);
@@ -72,8 +83,10 @@ declare n int;
 begin
     select count(*) into n from public.application_offers;
     assert n = 0, 'u2 must not see u1 offers';
-    assert public.test_expect_denied(format('select public.proposal_accept(%s)', current_setting('regla.test_app'))),
-        'u2 must not accept u1 proposta';
+    assert public.test_expect_hidden(format('select public.proposal_accept(%s)', current_setting('regla.test_app'))),
+        'u2 must not accept u1 proposta (and must not learn it exists)';
+    assert public.test_expect_hidden('select public.proposal_accept(999999)'),
+        'missing id looks the same as someone else''s';
 end $$;
 commit;
 
@@ -194,6 +207,17 @@ begin
 end $$;
 commit;
 
+-- ─── anon cannot call the RPCs at all (0015) ──────────────────────────
+begin;
+set local role anon;
+do $$
+begin
+    assert public.test_expect_denied('select public.proposal_accept(1)'), 'anon must not execute proposal_accept';
+    assert public.test_expect_denied('select public.proposal_counter(1, 100)'), 'anon must not execute proposal_counter';
+    assert public.test_expect_denied('select public.proposal_docs_sent(1)'), 'anon must not execute proposal_docs_sent';
+end $$;
+commit;
+
 -- ─── Catalog ──────────────────────────────────────────────────────────
 do $$
 begin
@@ -203,4 +227,5 @@ begin
 end $$;
 
 drop function public.test_expect_denied(text);
+drop function public.test_expect_hidden(text);
 select '0014 lifecycle tests passed' as result;

@@ -30,8 +30,23 @@ jobs:
         run: chmod +x gradlew
       - name: Unit tests (all modules)
         run: ./gradlew :core:model:test testDebugUnitTest --stacktrace --continue
-      - name: Assemble debug APKs
-        run: ./gradlew :app-client:assembleDebug :app-realtor:assembleDebug --stacktrace
+      - name: Assemble demo APKs (sample data, no Supabase)
+        run: |
+          ./gradlew :app-client:assembleDebug :app-realtor:assembleDebug --stacktrace
+          mkdir -p dist/demo
+          cp app-client/build/outputs/apk/debug/*.apk dist/demo/regla-cliente-demo.apk
+          cp app-realtor/build/outputs/apk/debug/*.apk dist/demo/regla-corretor-demo.apk
+      - name: Assemble live APKs (real Supabase data)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then echo "Supabase secrets not set, skipping live build"; exit 0; fi
+          ./gradlew :app-client:assembleDebug :app-realtor:assembleDebug --stacktrace
+          mkdir -p dist/live
+          cp app-client/build/outputs/apk/debug/*.apk dist/live/regla-cliente.apk
+          cp app-realtor/build/outputs/apk/debug/*.apk dist/live/regla-corretor.apk
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v5
@@ -39,8 +54,14 @@ jobs:
           name: test-reports
           path: android/**/build/reports/tests/
           if-no-files-found: ignore
-      - name: Upload APKs
+      - name: Upload demo APKs
         uses: actions/upload-artifact@v5
         with:
-          name: apks
-          path: android/app-*/build/outputs/apk/debug/*.apk
+          name: apks-demo
+          path: android/dist/demo/*.apk
+      - name: Upload live APKs
+        uses: actions/upload-artifact@v5
+        with:
+          name: apks-live
+          path: android/dist/live/*.apk
+          if-no-files-found: ignore
