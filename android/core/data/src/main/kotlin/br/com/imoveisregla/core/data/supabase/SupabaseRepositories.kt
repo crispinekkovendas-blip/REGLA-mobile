@@ -37,7 +37,9 @@ import br.com.imoveisregla.core.model.VisitInput
 import br.com.imoveisregla.core.model.documentPath
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
@@ -135,6 +137,16 @@ internal class SupabaseAuthRepository(
             client.auth.signInWith(Email) {
                 this.email = e
                 this.password = password
+            }
+        }
+    }
+
+    override suspend fun signInWithGoogle(idToken: String, rawNonce: String) {
+        remote {
+            client.auth.signInWith(IDToken) {
+                this.idToken = idToken
+                provider = Google
+                nonce = rawNonce
             }
         }
     }

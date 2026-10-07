@@ -47,14 +47,16 @@ jobs:
       - name: Assemble demo APKs (sample data, no Supabase)
         run: |
           ./gradlew :app-client:assembleDebug :app-realtor:assembleDebug --stacktrace
-          mkdir -p dist/demo
-          cp app-client/build/outputs/apk/debug/*.apk dist/demo/regla-cliente-demo.apk
-          cp app-realtor/build/outputs/apk/debug/*.apk dist/demo/regla-corretor-demo.apk
+          # demo builds (".demo" app id, "REGLA Demo" name) stay CI artifacts only — never published
+          mkdir -p dist-demo
+          cp app-client/build/outputs/apk/debug/*.apk dist-demo/regla-cliente-demo.apk
+          cp app-realtor/build/outputs/apk/debug/*.apk dist-demo/regla-corretor-demo.apk
       - name: Assemble live APKs (real Supabase data)
         if: ${{ github.event_name != 'pull_request' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then echo "Supabase secrets not set, skipping live build"; exit 0; fi
           ./gradlew :app-client:assembleDebug :app-realtor:assembleDebug --stacktrace
@@ -79,7 +81,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: apks-demo
-          path: android/dist/demo/*.apk
+          path: android/dist-demo/*.apk
       - name: Upload live APKs
         uses: actions/upload-artifact@v5
         with:

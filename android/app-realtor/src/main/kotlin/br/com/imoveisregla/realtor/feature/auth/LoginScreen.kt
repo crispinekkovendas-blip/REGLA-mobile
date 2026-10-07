@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.imoveisregla.core.designsystem.Regla
+import br.com.imoveisregla.core.data.google.GoogleSignIn
+import br.com.imoveisregla.core.designsystem.GoogleSignInButton
 import br.com.imoveisregla.core.designsystem.ReglaButton
 import br.com.imoveisregla.realtor.LocalAppContainer
 
@@ -51,6 +54,7 @@ import br.com.imoveisregla.realtor.LocalAppContainer
 fun LoginScreen(onLoggedIn: () -> Unit) {
     val container = LocalAppContainer.current
     val vm = viewModel { LoginViewModel(container.auth) }
+    val context = LocalContext.current
     val state by vm.state.collectAsStateWithLifecycle()
 
     Column(
@@ -137,9 +141,14 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
             ReglaButton(
                 text = "Entrar",
                 onClick = { vm.submit(onLoggedIn) },
-                enabled = state.email.isNotBlank() && state.password.isNotEmpty(),
+                enabled = state.email.isNotBlank() && state.password.isNotEmpty() && !state.googleLoading,
                 loading = state.loading,
                 modifier = Modifier.fillMaxWidth(),
+            )
+            GoogleSignInButton(
+                onClick = { vm.signInWithGoogle({ GoogleSignIn.requestIdToken(context) }, onLoggedIn) },
+                loading = state.googleLoading,
+                enabled = !state.loading,
             )
 
             Spacer(Modifier.height(4.dp))
@@ -155,8 +164,8 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 Spacer(Modifier.size(10.dp))
                 Box(Modifier.weight(1f)) {
                     Text(
-                        "Acesso fornecido pela REGLA. As contas de corretor são criadas pela administração — " +
-                            "fale com a equipe se ainda não tem a sua.",
+                        "Acesso fornecido pela REGLA. Entre com o e-mail da sua conta de corretor — com Google, " +
+                            "use a conta Google desse mesmo e-mail. Ainda não tem acesso? Fale com a equipe.",
                         color = Regla.Muted,
                         style = MaterialTheme.typography.bodyMedium,
                     )

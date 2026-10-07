@@ -114,6 +114,11 @@ class FakeBackend(
             state.value = SessionState.SignedIn(UserSession(demoUser.userId, email))
         }
 
+        override suspend fun signInWithGoogle(idToken: String, rawNonce: String) {
+            require(idToken.isNotBlank()) { "Login com Google cancelado" }
+            state.value = SessionState.SignedIn(demoUser)
+        }
+
         override suspend fun signOut() { state.value = SessionState.SignedOut }
         override suspend fun isRealtor(): Boolean = asRealtor && state.value is SessionState.SignedIn
     }

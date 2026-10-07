@@ -12,6 +12,13 @@ android {
         minSdk = 26
         targetSdk = 36
         // CI passes the GitHub run number so every published build installs over the last one.
+        // Builds without Supabase config run on sample data: give them their own id + name
+        // ("… Demo") so they can never be mistaken for, or installed over, the real app.
+        val live = !System.getenv("SUPABASE_URL").isNullOrBlank() ||
+            rootProject.file("local.properties").takeIf { it.exists() }?.readLines()
+                ?.any { it.startsWith("SUPABASE_URL=") && it.substringAfter("=").isNotBlank() } == true
+        if (!live) applicationIdSuffix = ".demo"
+        manifestPlaceholders["appLabel"] = if (live) "REGLA" else "REGLA Demo"
         val build = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 1
         versionCode = build
         versionName = "0.1.$build"

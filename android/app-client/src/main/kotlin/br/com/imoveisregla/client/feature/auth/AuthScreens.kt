@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MarkEmailRead
 import androidx.compose.material.icons.outlined.Mail
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -38,7 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.imoveisregla.client.LocalAppContainer
+import br.com.imoveisregla.core.data.google.GoogleSignIn
 import br.com.imoveisregla.core.designsystem.ButtonKind
+import br.com.imoveisregla.core.designsystem.GoogleSignInButton
 import br.com.imoveisregla.core.designsystem.Regla
 import br.com.imoveisregla.core.designsystem.ReglaButton
 
@@ -60,6 +64,7 @@ fun LoginScreen(onLoggedIn: () -> Unit, onSignup: () -> Unit, onBack: () -> Unit
             color = Regla.Muted,
         )
         Spacer(Modifier.height(24.dp))
+        GoogleAuthSection(onSignedIn = onLoggedIn)
         AuthTextField(
             value = state.email,
             onValueChange = vm::onEmailChange,
@@ -121,13 +126,13 @@ fun SignupScreen(onSignedUp: () -> Unit, onBack: () -> Unit) {
         if (state.needsConfirmation) {
             ConfirmEmailNotice(email = state.email.trim(), onBack = onBack)
         } else {
-            SignupForm(state, vm, onBack)
+            SignupForm(state, vm, onBack, onSignedUp)
         }
     }
 }
 
 @Composable
-private fun SignupForm(state: SignupUiState, vm: SignupViewModel, onBack: () -> Unit) {
+private fun SignupForm(state: SignupUiState, vm: SignupViewModel, onBack: () -> Unit, onSignedUp: () -> Unit) {
     val focus = LocalFocusManager.current
     Column(Modifier.fillMaxWidth()) {
         Text("Criar conta", style = MaterialTheme.typography.headlineMedium, color = Regla.Ink)
@@ -138,6 +143,7 @@ private fun SignupForm(state: SignupUiState, vm: SignupViewModel, onBack: () -> 
             color = Regla.Muted,
         )
         Spacer(Modifier.height(24.dp))
+        GoogleAuthSection(onSignedIn = onSignedUp, text = "Criar conta com o Google")
         AuthTextField(
             value = state.email,
             onValueChange = vm::onEmailChange,
@@ -245,6 +251,39 @@ private fun ConfirmEmailNotice(email: String, onBack: () -> Unit) {
         Spacer(Modifier.height(24.dp))
         ReglaButton("Voltar para o login", onClick = onBack, modifier = Modifier.fillMaxWidth())
     }
+}
+
+/** "Continuar com o Google" + an "ou" divider above the e-mail form. */
+@Composable
+private fun GoogleAuthSection(onSignedIn: () -> Unit, text: String = "Continuar com o Google") {
+    val container = LocalAppContainer.current
+    val vm: GoogleSignInViewModel = viewModel { GoogleSignInViewModel(container.auth) }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(state.signedIn) { if (state.signedIn) onSignedIn() }
+
+    GoogleSignInButton(
+        text = text,
+        loading = state.loading,
+        onClick = { vm.signIn { GoogleSignIn.requestIdToken(context) } },
+    )
+    state.error?.let {
+        Spacer(Modifier.height(12.dp))
+        AuthErrorBox(it)
+    }
+    Spacer(Modifier.height(16.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        HorizontalDivider(Modifier.weight(1f), color = Regla.Line)
+        Text(
+            "ou com e-mail",
+            style = MaterialTheme.typography.labelMedium,
+            color = Regla.Muted,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        HorizontalDivider(Modifier.weight(1f), color = Regla.Line)
+    }
+    Spacer(Modifier.height(16.dp))
 }
 
 @Composable

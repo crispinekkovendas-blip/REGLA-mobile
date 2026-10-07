@@ -3,6 +3,7 @@ package br.com.imoveisregla.realtor.feature.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import br.com.imoveisregla.core.data.AuthRepository
+import br.com.imoveisregla.core.data.google.GoogleIdToken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,7 @@ data class LoginUiState(
     val password: String = "",
     val passwordVisible: Boolean = false,
     val loading: Boolean = false,
+    val googleLoading: Boolean = false,
     val error: String? = null,
 ) {
     val canSubmit: Boolean get() = email.isNotBlank() && password.isNotEmpty() && !loading
@@ -46,6 +48,28 @@ class LoginViewModel(private val auth: AuthRepository) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 _state.update { it.copy(loading = false, error = friendlyAuthError(e.message)) }
+            }
+        }
+    }
+
+    /** Google sign-in; the auth gate then checks `is_admin` like for e-mail logins. */
+    fun signInWithGoogle(requestToken: suspend () -> GoogleIdToken?, onSuccess: () -> Unit) {
+        if (_state.value.loading || _state.value.googleLoading) return
+        _state.update { it.copy(googleLoading = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val token = requestToken()
+                if (token == null) {
+                    _state.update { it.copy(googleLoading = false) }
+                    return@launch
+                }
+                auth.signInWithGoogle(token.idToken, token.rawNonce)
+                _state.update { it.copy(googleLoading = false) }
+                onSuccess()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(googleLoading = false, error = friendlyAuthError(e.message)) }
             }
         }
     }

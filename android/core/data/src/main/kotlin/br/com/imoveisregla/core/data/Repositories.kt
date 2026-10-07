@@ -41,6 +41,8 @@ interface AuthRepository {
     val session: StateFlow<SessionState>
     suspend fun signIn(email: String, password: String)
     suspend fun signUp(email: String, password: String)
+    /** Sign in (or sign up) with a Google ID token from Credential Manager; see [br.com.imoveisregla.core.data.google.GoogleSignIn]. */
+    suspend fun signInWithGoogle(idToken: String, rawNonce: String)
     suspend fun signOut()
     /** True when the signed-in user is a REGLA realtor (`public.is_admin()`). */
     suspend fun isRealtor(): Boolean
