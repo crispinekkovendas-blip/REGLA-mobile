@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import br.com.imoveisregla.core.data.AppContainer
 import br.com.imoveisregla.core.data.fake.FakeBackend
 import br.com.imoveisregla.core.designsystem.ReglaTheme
 import br.com.imoveisregla.realtor.LocalAppContainer
@@ -39,7 +40,9 @@ class RealtorScreenshots {
 
     private fun render(db: FakeBackend = FakeBackend(asRealtor = true), content: @Composable () -> Unit) {
         compose.setContent {
-            CompositionLocalProvider(LocalAppContainer provides db) { ReglaTheme { content() } }
+            // Sample data, but rendered as the live app (no "Modo demonstração" banner) for the review board.
+            val asLive = object : AppContainer by db { override val isLive: Boolean = true }
+            CompositionLocalProvider(LocalAppContainer provides asLive) { ReglaTheme { content() } }
         }
         settle()
     }

@@ -21,6 +21,7 @@ import br.com.imoveisregla.client.feature.proposals.ProposalDetailScreen
 import br.com.imoveisregla.client.feature.visit.BookVisitScreen
 import br.com.imoveisregla.client.ui.ClientApp
 import br.com.imoveisregla.client.ui.ClientTab
+import br.com.imoveisregla.core.data.AppContainer
 import br.com.imoveisregla.core.data.fake.FakeBackend
 import br.com.imoveisregla.core.designsystem.ReglaTheme
 import kotlinx.coroutines.runBlocking
@@ -45,7 +46,9 @@ class ClientScreenshots {
 
     private fun render(db: FakeBackend = FakeBackend(asRealtor = false), content: @Composable () -> Unit) {
         compose.setContent {
-            CompositionLocalProvider(LocalAppContainer provides db) { ReglaTheme { content() } }
+            // Sample data, but rendered as the live app (no "Modo demonstração" banner) for the review board.
+            val asLive = object : AppContainer by db { override val isLive: Boolean = true }
+            CompositionLocalProvider(LocalAppContainer provides asLive) { ReglaTheme { content() } }
         }
         settle()
     }
