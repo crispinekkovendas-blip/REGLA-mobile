@@ -25,6 +25,10 @@ files = {p.name: p for p in sorted(DIST.glob("*/*.apk"))}
 if not files:
     sys.exit(f"no APKs under {DIST}")
 
+# Screen renders from the Robolectric screenshot tests (c-*.png client, r-*.png realtor)
+# for the review board at imoveisregla.com.br/admin/app-review.
+SCREENS = sorted((DIST.parent).glob("app-*/build/screens/*.png"))
+
 code = int(os.environ.get("APP_VERSION_CODE", "1"))
 manifest = {
     "version": f"0.1.{code}",
@@ -40,6 +44,19 @@ manifest = {
 }
 manifest_path = DIST / "manifest.json"
 manifest_path.write_text(json.dumps(manifest, indent=2))
+
+for shot in SCREENS:
+    files[f"screens/{shot.name}"] = shot
+if SCREENS:
+    index_path = DIST / "screens-index.json"
+    index_path.write_text(json.dumps({
+        "version": manifest["version"],
+        "versionCode": code,
+        "builtAt": manifest["builtAt"],
+        "commit": manifest["commit"],
+        "screens": [s.stem for s in SCREENS],
+    }, indent=2))
+    files["screens/index.json"] = index_path
 files["manifest.json"] = manifest_path
 
 req = urllib.request.Request(
@@ -55,10 +72,13 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req, timeout=60) as res:
     uploads = json.load(res)["uploads"]
 
-order = [n for n in files if n != "manifest.json"] + ["manifest.json"]
+last = ["screens/index.json", "manifest.json"]
+order = [n for n in files if n not in last] + [n for n in last if n in files]
 for name in order:
     path = files[name]
-    ctype = "application/json" if name.endswith(".json") else "application/vnd.android.package-archive"
+    ctype = ("application/json" if name.endswith(".json")
+             else "image/png" if name.endswith(".png")
+             else "application/vnd.android.package-archive")
     put = urllib.request.Request(
         uploads[name],
         data=path.read_bytes(),
