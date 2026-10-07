@@ -34,4 +34,5 @@ done
 
 echo "› RLS smoke tests"
 run "$HERE/rls_smoke.sql"
+run "$HERE/rls_smoke_0014.sql"
 echo "✓ database checks passed"
