@@ -187,7 +187,7 @@ class FakeBackend(
 
     private fun hydrate(a: Application): Application = a.copy(
         profile = profileRows[a.userId], listings = ref(a.listingId),
-        offers = offerRows.filter { it.applicationId == a.id }.sortedBy { it.id },
+        offers = offerRows.filter { it.applicationId == a.id }, // insertion order = chronological
     )
 
     /** Index of an application the demo user may act on (realtor: any; client: own). */
@@ -214,7 +214,7 @@ class FakeBackend(
         emitChange()
     }
 
-    private fun latestOffer(id: Long): Offer? = offerRows.filter { it.applicationId == id }.maxByOrNull { it.id }
+    private fun latestOffer(id: Long): Offer? = offerRows.lastOrNull { it.applicationId == id }
 
     override val applications: ApplicationRepository = object : ApplicationRepository {
         override suspend fun submit(input: ApplicationInput): Application {
