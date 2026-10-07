@@ -231,19 +231,27 @@ fun StatusTimeline(
     }
 }
 
-/** Timeline steps + current index for a proposta status. */
+/**
+ * Timeline steps + current index for a proposta (QuintoAndar-style lifecycle):
+ * Enviada → Negociação → Aceita → Documentos → Aprovada (or Recusada / Cancelada).
+ */
 fun applicationTimeline(status: ApplicationStatus): Pair<List<String>, Int> {
+    val docs = when (status) {
+        ApplicationStatus.DOCS_REVIEW, ApplicationStatus.DOCS_REQUESTED -> status.label
+        else -> "Documentos"
+    }
     val final = when (status) {
         ApplicationStatus.APPROVED, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN -> status.label
-        else -> "Decisão"
+        else -> "Contrato"
     }
-    val middle = if (status == ApplicationStatus.DOCS_REQUESTED) status.label else ApplicationStatus.UNDER_REVIEW.label
     val idx = when (status) {
-        ApplicationStatus.SUBMITTED -> 0
-        ApplicationStatus.UNDER_REVIEW, ApplicationStatus.DOCS_REQUESTED -> 1
-        else -> 2
+        ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW -> 0
+        ApplicationStatus.NEGOTIATING -> 1
+        ApplicationStatus.ACCEPTED -> 2
+        ApplicationStatus.DOCS_REVIEW, ApplicationStatus.DOCS_REQUESTED -> 3
+        ApplicationStatus.APPROVED, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN -> 4
     }
-    return listOf(ApplicationStatus.SUBMITTED.label, middle, final) to idx
+    return listOf(ApplicationStatus.SUBMITTED.label, "Negociação", ApplicationStatus.ACCEPTED.label, docs, final) to idx
 }
 
 @Composable

@@ -3,6 +3,7 @@ package br.com.imoveisregla.realtor.feature.proposals
 import br.com.imoveisregla.core.data.fake.FakeBackend
 import br.com.imoveisregla.core.model.ApplicationStatus
 import br.com.imoveisregla.core.model.InquiryStage
+import br.com.imoveisregla.core.model.Party
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -34,13 +35,23 @@ class ApplicationDetailViewModelTest {
     private fun vm(id: Long = 301) = ApplicationDetailViewModel(fake.applications, fake.documents, id)
     private fun row(id: Long = 301) = fake.applicationRows.first { it.id == id }
 
+    /** Puts 301 in the documents-review phase (client accepted + sent documents). */
+    private fun toDocsReview() {
+        val i = fake.applicationRows.indexOfFirst { it.id == 301L }
+        fake.applicationRows[i] = fake.applicationRows[i].copy(
+            status = ApplicationStatus.DOCS_REVIEW, awaiting = Party.REALTOR, agreedPrice = 4_600,
+        )
+    }
+
     @Test
-    fun loadsSeededApplicationWithProfile() {
+    fun loadsSeededApplicationWithProfileAndOffers() {
         val s = vm().state.value
         assertFalse(s.loading)
         assertNull(s.error)
         assertEquals("Mariana Souza", s.application!!.profile!!.fullName)
         assertEquals(ApplicationStatus.UNDER_REVIEW, s.application!!.status)
+        assertEquals(1, s.application!!.offers.size)
+        assertEquals(RealtorAction.RESPOND_OFFER, s.action)
         assertTrue(s.canAct)
     }
 
@@ -53,64 +64,79 @@ class ApplicationDetailViewModelTest {
     }
 
     @Test
-    fun approveUpdatesRowAndClosesLinkedLead() {
+    fun acceptLocksPriceAndWaitsForDocuments() {
         val vm = vm()
-        assertNull(vm.review(ApplicationStatus.APPROVED, null))
-        assertEquals(ApplicationStatus.APPROVED, row().status)
-        assertEquals(InquiryStage.CLOSED_WON, fake.inquiryRows.first { it.id == 105L }.stage)
+        vm.accept()
         val s = vm.state.value
-        assertEquals(ApplicationStatus.APPROVED, s.application!!.status)
-        assertEquals("Proposta aprovada", s.message)
-        assertFalse(s.canAct)
-        assertFalse(s.submitting)
-    }
-
-    @Test
-    fun rejectRequiresNote() {
-        val vm = vm()
-        assertNotNull(vm.review(ApplicationStatus.REJECTED, null))
-        assertNotNull(vm.review(ApplicationStatus.REJECTED, "   "))
-        assertEquals(ApplicationStatus.UNDER_REVIEW, row().status)
-        assertEquals("Escreva uma observação para o cliente", vm.state.value.message)
-
-        assertNull(vm.review(ApplicationStatus.REJECTED, "  Renda insuficiente "))
-        assertEquals(ApplicationStatus.REJECTED, row().status)
-        assertEquals("Renda insuficiente", row().reviewerNote)
-        // the linked lead is not closed on rejection
+        assertEquals(ApplicationStatus.ACCEPTED, s.application!!.status)
+        assertEquals(4_600L, s.application!!.agreedPrice)
+        assertEquals(RealtorAction.WAIT_CLIENT, s.action)
+        assertEquals("Proposta aceita · o cliente vai enviar os documentos", s.message)
+        // the lead stays an open offer until final approval
         assertEquals(InquiryStage.OFFER, fake.inquiryRows.first { it.id == 105L }.stage)
     }
 
     @Test
-    fun docsRequestRequiresNote() {
+    fun counterValidatesAndHandsTurnToClient() {
         val vm = vm()
-        assertNotNull(vm.review(ApplicationStatus.DOCS_REQUESTED, ""))
-        assertEquals(ApplicationStatus.UNDER_REVIEW, row().status)
-
-        assertNull(vm.review(ApplicationStatus.DOCS_REQUESTED, "Envie o comprovante de renda"))
-        assertEquals(ApplicationStatus.DOCS_REQUESTED, row().status)
-        assertEquals("Envie o comprovante de renda", row().reviewerNote)
-        assertTrue(vm.state.value.canAct) // still open
+        assertEquals("Informe um valor", vm.counter(null, null))
+        assertEquals("Informe um valor diferente da oferta atual", vm.counter(4_600, null))
+        assertNull(vm.counter(4_750, "  Proprietário pede 4.750 "))
+        val app = vm.state.value.application!!
+        assertEquals(ApplicationStatus.NEGOTIATING, app.status)
+        assertEquals(Party.CLIENT, app.awaiting)
+        assertEquals(4_750L, app.currentPrice)
+        assertEquals("Proprietário pede 4.750", app.latestOffer?.message)
+        assertEquals(RealtorAction.WAIT_CLIENT, vm.state.value.action)
     }
 
     @Test
-    fun actionsBlockedWhenNotOpen() {
+    fun declineRequiresNote() {
         val vm = vm()
-        vm.review(ApplicationStatus.APPROVED, null)
-        vm.consumeMessage()
+        assertNotNull(vm.decline("   "))
+        assertEquals(ApplicationStatus.UNDER_REVIEW, row().status)
+        assertNull(vm.decline("  Renda insuficiente "))
+        assertEquals(ApplicationStatus.REJECTED, row().status)
+        assertEquals("Renda insuficiente", row().reviewerNote)
+        assertEquals(InquiryStage.OFFER, fake.inquiryRows.first { it.id == 105L }.stage)
+        assertFalse(vm.state.value.canAct)
+    }
 
-        val err = vm.review(ApplicationStatus.REJECTED, "Mudei de ideia")
-        assertEquals("Esta proposta já foi finalizada", err)
+    @Test
+    fun approveOnlyAfterDocuments() {
+        val vm = vm()
+        assertEquals("Ação indisponível nesta etapa", vm.review(ApplicationStatus.APPROVED, null))
+        assertEquals(ApplicationStatus.UNDER_REVIEW, row().status)
+
+        toDocsReview()
+        vm.load()
+        assertEquals(RealtorAction.REVIEW_DOCS, vm.state.value.action)
+        assertNull(vm.review(ApplicationStatus.APPROVED, null))
         assertEquals(ApplicationStatus.APPROVED, row().status)
-        assertNotNull(vm.review(ApplicationStatus.UNDER_REVIEW, null))
-        assertEquals(ApplicationStatus.APPROVED, row().status)
+        assertEquals(InquiryStage.CLOSED_WON, fake.inquiryRows.first { it.id == 105L }.stage)
+        assertEquals("Proposta aprovada", vm.state.value.message)
+        assertFalse(vm.state.value.canAct)
+    }
+
+    @Test
+    fun correctionRequiresNoteAndReturnsTurnToClient() {
+        toDocsReview()
+        val vm = vm()
+        assertNotNull(vm.review(ApplicationStatus.DOCS_REQUESTED, ""))
+        assertNull(vm.review(ApplicationStatus.DOCS_REQUESTED, "Envie o comprovante de renda"))
+        assertEquals(ApplicationStatus.DOCS_REQUESTED, row().status)
+        assertEquals(Party.CLIENT, row().awaiting)
+        assertEquals("Envie o comprovante de renda", row().reviewerNote)
+        assertEquals(RealtorAction.WAIT_CLIENT, vm.state.value.action)
     }
 
     @Test
     fun withdrawnApplicationIsReadOnly() {
         val i = fake.applicationRows.indexOfFirst { it.id == 301L }
-        fake.applicationRows[i] = fake.applicationRows[i].copy(status = ApplicationStatus.WITHDRAWN)
+        fake.applicationRows[i] = fake.applicationRows[i].copy(status = ApplicationStatus.WITHDRAWN, awaiting = null)
         val vm = vm()
         assertFalse(vm.state.value.canAct)
+        assertEquals(RealtorAction.CLOSED, vm.state.value.action)
         assertNotNull(vm.review(ApplicationStatus.APPROVED, null))
         assertEquals(ApplicationStatus.WITHDRAWN, row().status)
     }
@@ -119,12 +145,14 @@ class ApplicationDetailViewModelTest {
     fun listViewModelCountsAndFilters() {
         val list = ProposalsViewModel(fake.applications)
         val s = list.state.value
-        assertEquals(1, s.counts[null])
-        assertEquals(1, s.counts[ApplicationStatus.UNDER_REVIEW])
-        assertEquals("Mariana Souza", s.visible.single().profile?.fullName)
-        list.setFilter(ApplicationStatus.APPROVED)
+        assertEquals(2, s.counts[ProposalFilter.ALL])
+        assertEquals(1, s.counts[ProposalFilter.YOUR_TURN])
+        assertEquals(2, s.counts[ProposalFilter.NEGOTIATION])
+        list.setFilter(ProposalFilter.YOUR_TURN)
+        assertEquals(listOf(301L), list.state.value.visible.map { it.id })
+        list.setFilter(ProposalFilter.APPROVED)
         assertTrue(list.state.value.visible.isEmpty())
-        list.setFilter(null)
-        assertEquals(1, list.state.value.visible.size)
+        list.setFilter(ProposalFilter.ALL)
+        assertEquals(2, list.state.value.visible.size)
     }
 }

@@ -160,18 +160,25 @@ class ComponentsTest {
     }
 
     @Test fun applicationTimeline_steps() {
-        assertEquals(listOf("Enviada", "Em análise", "Decisão") to 0, applicationTimeline(ApplicationStatus.SUBMITTED))
-        assertEquals(1, applicationTimeline(ApplicationStatus.DOCS_REQUESTED).second)
-        assertEquals("Documentos pendentes", applicationTimeline(ApplicationStatus.DOCS_REQUESTED).first[1])
-        assertEquals(listOf("Enviada", "Em análise", "Aprovada") to 2, applicationTimeline(ApplicationStatus.APPROVED))
-        assertEquals("Recusada", applicationTimeline(ApplicationStatus.REJECTED).first[2])
+        assertEquals(
+            listOf("Enviada", "Negociação", "Aceita", "Documentos", "Contrato") to 0,
+            applicationTimeline(ApplicationStatus.SUBMITTED),
+        )
+        assertEquals(1, applicationTimeline(ApplicationStatus.NEGOTIATING).second)
+        assertEquals(2, applicationTimeline(ApplicationStatus.ACCEPTED).second)
+        assertEquals(3, applicationTimeline(ApplicationStatus.DOCS_REQUESTED).second)
+        assertEquals("Documentos pendentes", applicationTimeline(ApplicationStatus.DOCS_REQUESTED).first[3])
+        assertEquals("Documentos em análise", applicationTimeline(ApplicationStatus.DOCS_REVIEW).first[3])
+        assertEquals(4, applicationTimeline(ApplicationStatus.APPROVED).second)
+        assertEquals("Aprovada", applicationTimeline(ApplicationStatus.APPROVED).first[4])
+        assertEquals("Recusada", applicationTimeline(ApplicationStatus.REJECTED).first[4])
     }
 
     @Test fun statusTimeline_rendersSteps() {
         rule.setContent { ReglaTheme { ApplicationStatusTimeline(ApplicationStatus.UNDER_REVIEW) } }
         rule.onNodeWithText("Enviada").assertExists()
-        rule.onNodeWithText("Em análise").assertExists()
-        rule.onNodeWithText("Decisão").assertExists()
+        rule.onNodeWithText("Negociação").assertExists()
+        rule.onNodeWithText("Contrato").assertExists()
     }
 
     @Test fun initials_rules() {

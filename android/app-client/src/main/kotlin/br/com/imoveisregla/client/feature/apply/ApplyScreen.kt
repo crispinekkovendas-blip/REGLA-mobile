@@ -118,25 +118,10 @@ fun ApplyScreen(listingId: Long, onBack: () -> Unit, onDone: () -> Unit) {
                     action = { ReglaButton("Voltar", onBack, kind = ButtonKind.Secondary) },
                 )
                 state.loadError != null -> ErrorState(state.loadError ?: "", onRetry = vm::load)
-                state.submitted != null -> SubmittedContent(state.attachWarning, onDone)
+                state.submitted != null -> SubmittedContent(onDone)
                 listing != null -> WizardContent(state, listing, vm)
             }
         }
-    }
-
-    if (state.showSkipDocsDialog) {
-        AlertDialog(
-            onDismissRequest = vm::dismissSkipDialog,
-            title = { Text("Enviar documentos depois?") },
-            text = {
-                Text(
-                    "Sua proposta será enviada, mas a análise só começa quando os documentos obrigatórios " +
-                        "estiverem completos. Você pode enviá-los em Perfil › Documentos.",
-                )
-            },
-            confirmButton = { TextButton(onClick = vm::confirmSkipDocuments) { Text("Enviar depois") } },
-            dismissButton = { TextButton(onClick = vm::dismissSkipDialog) { Text("Voltar") } },
-        )
     }
 
     val error = state.error
@@ -193,16 +178,6 @@ private fun WizardContent(state: ApplyUiState, listing: Listing, vm: ApplyViewMo
         when (state.step) {
             WizardStep.PROFILE -> WizardProfileStep(state.profile, state.profileErrors, vm::updateProfile)
             WizardStep.OFFER -> OfferStep(state, listing, vm)
-            WizardStep.DOCUMENTS -> WizardDocumentsStep(
-                documents = state.documents,
-                uploadedIds = state.uploadedIds,
-                uploadingKind = state.uploadingKind,
-                error = state.documentError,
-                onUpload = vm::upload,
-                onError = vm::reportDocumentError,
-                onRemove = vm::removeUploaded,
-                onSkip = vm::skipDocuments,
-            )
             WizardStep.REVIEW -> ReviewStep(state, listing, vm)
         }
         Spacer(Modifier.height(8.dp))
@@ -351,7 +326,7 @@ private fun OfferStep(state: ApplyUiState, listing: Listing, vm: ApplyViewModel)
     }
 }
 
-// ─── step 4 ───────────────────────────────────────────────────────────
+// ─── step 3 ───────────────────────────────────────────────────────────
 
 @Composable
 private fun ReviewRow(label: String, value: String, valueColor: Color = Regla.Ink) {
@@ -402,18 +377,13 @@ private fun ReviewStep(state: ApplyUiState, listing: Listing, vm: ApplyViewModel
             }
         }
 
-        WizardCard {
-            Text("Documentos", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            val missing = state.missingRequired
-            val requiredDone = REQUIRED_DOCUMENTS.size - missing.size
-            ReviewRow("Obrigatórios", "$requiredDone de ${REQUIRED_DOCUMENTS.size}", if (missing.isEmpty()) Regla.Ok else Regla.Warn)
-            ReviewRow("Arquivos no cadastro", "${state.documents.size}")
-            if (missing.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                NoticeBox("Pendentes: " + missing.joinToString { it.label } + ". Envie depois em Perfil › Documentos.")
-            }
-        }
+        NoticeBox(
+            title = "Próximos passos",
+            text = "O proprietário pode aceitar, recusar ou fazer uma contraproposta. " +
+                "Os documentos só serão pedidos depois que vocês chegarem a um acordo.",
+            color = Regla.Navy,
+            background = Regla.Surface,
+        )
 
         Row(
             Modifier
@@ -437,7 +407,7 @@ private fun ReviewStep(state: ApplyUiState, listing: Listing, vm: ApplyViewModel
 // ─── success ──────────────────────────────────────────────────────────
 
 @Composable
-private fun SubmittedContent(attachWarning: String?, onDone: () -> Unit) {
+private fun SubmittedContent(onDone: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -453,13 +423,9 @@ private fun SubmittedContent(attachWarning: String?, onDone: () -> Unit) {
         Text("Proposta enviada!", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Acompanhe o status em Propostas",
+            "O proprietário vai analisar sua oferta. Você será avisado para aceitar uma contraproposta ou enviar os documentos.",
             color = Regla.Muted, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center,
         )
-        if (attachWarning != null) {
-            Spacer(Modifier.height(16.dp))
-            NoticeBox(attachWarning)
-        }
         Spacer(Modifier.height(28.dp))
         ReglaButton("Ver minhas propostas", onDone, modifier = Modifier.fillMaxWidth())
     }

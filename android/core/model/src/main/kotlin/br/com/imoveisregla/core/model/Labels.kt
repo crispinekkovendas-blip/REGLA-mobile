@@ -48,10 +48,19 @@ val ApplicationStatus.label: String
     get() = when (this) {
         ApplicationStatus.SUBMITTED -> "Enviada"
         ApplicationStatus.UNDER_REVIEW -> "Em análise"
+        ApplicationStatus.NEGOTIATING -> "Em negociação"
+        ApplicationStatus.ACCEPTED -> "Aceita"
+        ApplicationStatus.DOCS_REVIEW -> "Documentos em análise"
         ApplicationStatus.DOCS_REQUESTED -> "Documentos pendentes"
         ApplicationStatus.APPROVED -> "Aprovada"
         ApplicationStatus.REJECTED -> "Recusada"
         ApplicationStatus.WITHDRAWN -> "Cancelada"
+    }
+
+val Party.label: String
+    get() = when (this) {
+        Party.CLIENT -> "Cliente"
+        Party.REALTOR -> "Proprietário"
     }
 
 val ApplicationIntent.label: String

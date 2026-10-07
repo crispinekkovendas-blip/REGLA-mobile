@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import br.com.imoveisregla.client.LocalAppContainer
@@ -26,9 +27,12 @@ class ProposalsScreenTest {
     @Test fun showsSeededProposalInReview() {
         val db = FakeBackend(asRealtor = false)
         var opened: Long? = null
+        var openedProposal: Long? = null
         compose.setContent {
             CompositionLocalProvider(LocalAppContainer provides db) {
-                ReglaTheme { ProposalsScreen(onOpenListing = { opened = it }, onRequireLogin = {}, onOpenDocuments = {}) }
+                ReglaTheme {
+                    ProposalsScreen(onOpenListing = { opened = it }, onRequireLogin = {}, onOpenProposal = { openedProposal = it })
+                }
             }
         }
         compose.waitUntil(5_000) {
@@ -36,7 +40,11 @@ class ProposalsScreenTest {
         }
         compose.onAllNodesWithText("Em análise").onFirst().assertIsDisplayed()
         compose.onNodeWithText("R$ 4.600").assertIsDisplayed()
-        compose.onNodeWithText("Cancelar proposta").assertIsDisplayed()
+        compose.onAllNodesWithText("Cancelar proposta").onFirst().assertIsDisplayed()
+
+        // tapping the card opens the proposta detail
+        compose.onNodeWithTag("proposal-301").performClick()
+        assertEquals(301L, openedProposal)
 
         compose.onNodeWithText("Apartamento com varanda em Pinheiros").performClick()
         assertEquals(1L, opened)
@@ -47,7 +55,7 @@ class ProposalsScreenTest {
         var loginRequested = false
         compose.setContent {
             CompositionLocalProvider(LocalAppContainer provides db) {
-                ReglaTheme { ProposalsScreen(onOpenListing = {}, onRequireLogin = { loginRequested = true }, onOpenDocuments = {}) }
+                ReglaTheme { ProposalsScreen(onOpenListing = {}, onRequireLogin = { loginRequested = true }, onOpenProposal = {}) }
             }
         }
         compose.onNodeWithText("Entrar").performClick()

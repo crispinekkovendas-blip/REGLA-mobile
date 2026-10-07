@@ -2,11 +2,13 @@ package br.com.imoveisregla.realtor.feature.proposals
 
 import androidx.compose.ui.graphics.Color
 import br.com.imoveisregla.core.designsystem.Regla
+import br.com.imoveisregla.core.designsystem.pillColors
 import br.com.imoveisregla.core.model.Affordability
 import br.com.imoveisregla.core.model.Application
 import br.com.imoveisregla.core.model.ApplicationStatus
 import br.com.imoveisregla.core.model.ClientDocument
 import br.com.imoveisregla.core.model.DocumentKind
+import br.com.imoveisregla.core.model.Party
 import br.com.imoveisregla.core.model.label
 import java.time.Duration
 import java.time.LocalDate
@@ -22,25 +24,48 @@ import kotlin.math.roundToInt
 internal val PT_BR: Locale = Locale.forLanguageTag("pt-BR")
 internal val BRT: ZoneOffset = ZoneOffset.ofHours(-3)
 
-/** Filter chips in display order; `null` = "Todas". */
-val PROPOSAL_FILTERS: List<ApplicationStatus?> = listOf(
-    null,
-    ApplicationStatus.SUBMITTED,
-    ApplicationStatus.UNDER_REVIEW,
-    ApplicationStatus.DOCS_REQUESTED,
-    ApplicationStatus.APPROVED,
-    ApplicationStatus.REJECTED,
-    ApplicationStatus.WITHDRAWN,
-)
+/** Filter chips in display order. */
+enum class ProposalFilter(val label: String, private val predicate: (Application) -> Boolean) {
+    ALL("Todas", { true }),
+    YOUR_TURN("Sua vez", { it.isTurnOf(Party.REALTOR) }),
+    NEGOTIATION("Negociação", { it.status.isNegotiation }),
+    DOCUMENTS("Documentos", { it.status.isDocumentsPhase }),
+    APPROVED("Aprovadas", { it.status == ApplicationStatus.APPROVED }),
+    CLOSED("Encerradas", { it.status == ApplicationStatus.REJECTED || it.status == ApplicationStatus.WITHDRAWN });
 
-fun filterLabel(status: ApplicationStatus?): String = status?.label ?: "Todas"
+    fun matches(app: Application): Boolean = predicate(app)
+}
 
-/** Count per filter chip (key `null` = total). Every filter is present, zero included. */
-fun statusCounts(apps: List<Application>): Map<ApplicationStatus?, Int> =
-    PROPOSAL_FILTERS.associateWith { f -> if (f == null) apps.size else apps.count { it.status == f } }
+/** Count per filter chip. Every filter is present, zero included. */
+fun statusCounts(apps: List<Application>): Map<ProposalFilter, Int> =
+    ProposalFilter.entries.associateWith { f -> apps.count(f::matches) }
 
-fun filterApplications(apps: List<Application>, status: ApplicationStatus?): List<Application> =
-    if (status == null) apps else apps.filter { it.status == status }
+fun filterApplications(apps: List<Application>, filter: ProposalFilter): List<Application> =
+    apps.filter(filter::matches)
+
+/** What the realtor can do right now on a proposta. */
+enum class RealtorAction { RESPOND_OFFER, REVIEW_DOCS, WAIT_CLIENT, CLOSED }
+
+fun realtorAction(app: Application): RealtorAction = when {
+    !app.status.isOpen -> RealtorAction.CLOSED
+    app.awaiting != Party.REALTOR -> RealtorAction.WAIT_CLIENT
+    app.status.isNegotiation -> RealtorAction.RESPOND_OFFER
+    app.status == ApplicationStatus.DOCS_REVIEW -> RealtorAction.REVIEW_DOCS
+    else -> RealtorAction.WAIT_CLIENT
+}
+
+/** One-line state headline, realtor's point of view. */
+fun realtorHeadline(app: Application): String = when (app.status) {
+    ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW -> "Nova proposta: aceite, recuse ou contraproponha"
+    ApplicationStatus.NEGOTIATING ->
+        if (app.awaiting == Party.REALTOR) "O cliente respondeu com uma contraproposta" else "Aguardando resposta do cliente"
+    ApplicationStatus.ACCEPTED -> "Aceita · aguardando documentos do cliente"
+    ApplicationStatus.DOCS_REVIEW -> "Documentos recebidos: analise e aprove"
+    ApplicationStatus.DOCS_REQUESTED -> "Aguardando correção dos documentos"
+    ApplicationStatus.APPROVED -> "Aprovada · siga com o contrato"
+    ApplicationStatus.REJECTED -> "Proposta recusada"
+    ApplicationStatus.WITHDRAWN -> "Cancelada pelo cliente"
+}
 
 /** Percent difference of the offer vs the asking price (negative = below asking). Null when unknown. */
 fun priceDiffPercent(offered: Long, listingPrice: Long): Double? =
@@ -58,14 +83,8 @@ fun formatDiffPercent(pct: Double?): String {
 fun rentIncomePercent(rent: Long, income: Long?): Int? =
     if (income == null || income <= 0) null else (rent * 100.0 / income).roundToInt()
 
-fun statusColors(status: ApplicationStatus): Pair<Color, Color> = when (status) {
-    ApplicationStatus.SUBMITTED -> Regla.Info to Regla.InfoSoft
-    ApplicationStatus.UNDER_REVIEW -> Regla.Warn to Regla.WarnSoft
-    ApplicationStatus.DOCS_REQUESTED -> Regla.Coral to Regla.CoralSoft
-    ApplicationStatus.APPROVED -> Regla.Ok to Regla.OkSoft
-    ApplicationStatus.REJECTED -> Regla.Danger to Regla.DangerSoft
-    ApplicationStatus.WITHDRAWN -> Regla.Muted to Regla.NavySoft
-}
+fun statusColors(status: ApplicationStatus): Pair<Color, Color> =
+    status.pillColors().let { it.foreground to it.background }
 
 fun affordabilityColor(a: Affordability): Color = when (a) {
     Affordability.OK -> Regla.Ok
@@ -127,13 +146,14 @@ fun missingRequiredDocs(docs: List<ClientDocument>): List<DocumentKind> {
     return REQUIRED_DOCS.filter { it !in have }
 }
 
-/** Statuses the realtor can move a proposal to from the review screen. */
-val REVIEW_TARGETS: Set<ApplicationStatus> = setOf(
-    ApplicationStatus.UNDER_REVIEW,
-    ApplicationStatus.DOCS_REQUESTED,
-    ApplicationStatus.APPROVED,
-    ApplicationStatus.REJECTED,
-)
+/** Direct status moves the realtor may make from [current] (negotiation moves go through accept/counter). */
+fun allowedReviewTargets(current: ApplicationStatus): Set<ApplicationStatus> = when {
+    !current.isOpen -> emptySet()
+    current == ApplicationStatus.SUBMITTED -> setOf(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.REJECTED)
+    current.isNegotiation -> setOf(ApplicationStatus.REJECTED)
+    current.isDocumentsPhase -> setOf(ApplicationStatus.DOCS_REQUESTED, ApplicationStatus.APPROVED, ApplicationStatus.REJECTED)
+    else -> emptySet()
+}
 
 fun noteRequired(target: ApplicationStatus): Boolean =
     target == ApplicationStatus.REJECTED || target == ApplicationStatus.DOCS_REQUESTED
@@ -141,15 +161,22 @@ fun noteRequired(target: ApplicationStatus): Boolean =
 /** Null when the review is allowed, else a user-facing error. */
 fun validateReview(current: ApplicationStatus, target: ApplicationStatus, note: String?): String? = when {
     !current.isOpen -> "Esta proposta já foi finalizada"
-    target !in REVIEW_TARGETS -> "Ação inválida"
     current == target -> "A proposta já está como \"${target.label}\""
+    target !in allowedReviewTargets(current) -> "Ação indisponível nesta etapa"
     noteRequired(target) && note.isNullOrBlank() -> "Escreva uma observação para o cliente"
+    else -> null
+}
+
+/** Null when a counter-offer of [price] is valid against the [current] price on the table. */
+fun validateCounter(price: Long?, current: Long): String? = when {
+    price == null || price <= 0 -> "Informe um valor"
+    price == current -> "Informe um valor diferente da oferta atual"
     else -> null
 }
 
 fun reviewSuccessMessage(target: ApplicationStatus): String = when (target) {
     ApplicationStatus.UNDER_REVIEW -> "Proposta marcada como em análise"
-    ApplicationStatus.DOCS_REQUESTED -> "Documentos solicitados ao cliente"
+    ApplicationStatus.DOCS_REQUESTED -> "Correção solicitada ao cliente"
     ApplicationStatus.APPROVED -> "Proposta aprovada"
     ApplicationStatus.REJECTED -> "Proposta recusada"
     else -> "Proposta atualizada"
@@ -157,22 +184,30 @@ fun reviewSuccessMessage(target: ApplicationStatus): String = when (target) {
 
 data class TimelineStep(val label: String, val done: Boolean, val current: Boolean, val tone: Color = Regla.Navy)
 
-/** Enviada → Em análise → (Documentos pendentes) → decisão. */
+/** Enviada → Negociação → Aceita → Documentos → decisão. */
 fun timelineSteps(app: Application): List<TimelineStep> {
     val s = app.status
-    val steps = mutableListOf<TimelineStep>()
-    steps += TimelineStep("Enviada", done = true, current = s == ApplicationStatus.SUBMITTED)
-    val reviewReached = s != ApplicationStatus.SUBMITTED && s != ApplicationStatus.WITHDRAWN ||
-        (s == ApplicationStatus.WITHDRAWN && app.reviewedBy != null)
-    steps += TimelineStep("Em análise", done = reviewReached, current = s == ApplicationStatus.UNDER_REVIEW)
-    if (s == ApplicationStatus.DOCS_REQUESTED) {
-        steps += TimelineStep("Documentos pendentes", done = true, current = true, tone = Regla.Coral)
+    val closedEarly = (s == ApplicationStatus.REJECTED || s == ApplicationStatus.WITHDRAWN) && app.agreedPrice == null
+    val reachedAccept = app.agreedPrice != null || s.isDocumentsPhase || s == ApplicationStatus.APPROVED
+    val steps = mutableListOf(
+        TimelineStep("Enviada", done = true, current = s == ApplicationStatus.SUBMITTED || s == ApplicationStatus.UNDER_REVIEW),
+        TimelineStep("Negociação", done = s != ApplicationStatus.SUBMITTED && s != ApplicationStatus.UNDER_REVIEW && !closedEarly || reachedAccept,
+            current = s == ApplicationStatus.NEGOTIATING),
+    )
+    if (!closedEarly) {
+        steps += TimelineStep("Aceita", done = reachedAccept, current = s == ApplicationStatus.ACCEPTED, tone = Regla.Ok)
+        steps += TimelineStep(
+            if (s == ApplicationStatus.DOCS_REQUESTED) "Correção" else "Documentos",
+            done = s == ApplicationStatus.DOCS_REVIEW || s == ApplicationStatus.DOCS_REQUESTED || s == ApplicationStatus.APPROVED,
+            current = s == ApplicationStatus.DOCS_REVIEW || s == ApplicationStatus.DOCS_REQUESTED,
+            tone = if (s == ApplicationStatus.DOCS_REQUESTED) Regla.Coral else Regla.Navy,
+        )
     }
     steps += when (s) {
         ApplicationStatus.APPROVED -> TimelineStep("Aprovada", done = true, current = true, tone = Regla.Ok)
         ApplicationStatus.REJECTED -> TimelineStep("Recusada", done = true, current = true, tone = Regla.Danger)
         ApplicationStatus.WITHDRAWN -> TimelineStep("Cancelada", done = true, current = true, tone = Regla.Muted)
-        else -> TimelineStep("Decisão", done = false, current = false)
+        else -> TimelineStep("Contrato", done = false, current = false)
     }
     return steps
 }

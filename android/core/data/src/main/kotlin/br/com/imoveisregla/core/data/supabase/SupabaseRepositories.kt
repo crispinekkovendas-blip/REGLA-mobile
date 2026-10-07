@@ -20,12 +20,14 @@ import br.com.imoveisregla.core.model.ClientProfile
 import br.com.imoveisregla.core.model.ClientProfileInput
 import br.com.imoveisregla.core.model.DashboardStats
 import br.com.imoveisregla.core.model.DocumentKind
+import br.com.imoveisregla.core.model.GuaranteeType
 import br.com.imoveisregla.core.model.Inquiry
 import br.com.imoveisregla.core.model.InquiryStage
 import br.com.imoveisregla.core.model.LeadNote
 import br.com.imoveisregla.core.model.Listing
 import br.com.imoveisregla.core.model.ListingFilters
 import br.com.imoveisregla.core.model.ListingStatus
+import br.com.imoveisregla.core.model.Offer
 import br.com.imoveisregla.core.model.Priority
 import br.com.imoveisregla.core.model.Showing
 import br.com.imoveisregla.core.model.ShowingStatus
@@ -50,6 +52,9 @@ import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -76,7 +81,7 @@ import kotlin.time.Duration.Companion.seconds
 internal object Selects {
     const val LISTING = "*,listing_photos(id,listing_id,storage_path,alt_text,position)"
     private const val REF = "id,title,neighborhood,city,price,currency"
-    const val APPLICATION = "*,listings!applications_listing_id_fkey($REF)"
+    const val APPLICATION = "*,listings!applications_listing_id_fkey($REF),application_offers(*)"
     const val APPLICATION_REVIEW = "$APPLICATION,client_profiles!applications_user_id_fkey(*)"
     const val SHOWING = "*,listings!showings_listing_id_fkey($REF)"
     const val INQUIRY = "*,listings!inquiries_property_id_fkey($REF)"
@@ -98,6 +103,8 @@ internal fun sanitizeQuery(q: String): String =
     q.replace(Regex("[%,()\"\\\\*:]"), " ").replace(Regex("\\s+"), " ").trim()
 
 private fun Listing.sortedPhotos(): Listing = copy(photos = photos.sortedBy { it.position })
+
+private fun Application.sortedOffers(): Application = copy(offers = offers.sortedWith(compareBy({ it.createdAt }, { it.id })))
 
 // ─── auth ─────────────────────────────────────────────────────────────
 
@@ -315,7 +322,7 @@ internal class SupabaseApplicationRepository(
             if (!hasProfile) throw ReglaDataException("Complete seu cadastro antes de enviar a proposta")
             client.from("applications").insert(ApplicationInsert.from(uid, input)) {
                 select(Columns.raw(Selects.APPLICATION))
-            }.decodeSingle<Application>()
+            }.decodeSingle<Application>().sortedOffers()
         }
     }
 
@@ -325,7 +332,7 @@ internal class SupabaseApplicationRepository(
             client.from("applications").select(Columns.raw(Selects.APPLICATION)) {
                 filter { eq("user_id", uid) }
                 order("created_at", Order.DESCENDING)
-            }.decodeList<Application>()
+            }.decodeList<Application>().map { it.sortedOffers() }
         }
     }
 
@@ -347,14 +354,54 @@ internal class SupabaseApplicationRepository(
         client.from("applications").select(Columns.raw(Selects.APPLICATION_REVIEW)) {
             if (status != null) filter { eq("status", wire(status)) }
             order("created_at", Order.DESCENDING)
-        }.decodeList<Application>()
+        }.decodeList<Application>().map { it.sortedOffers() }
     }
 
-    override suspend fun get(id: Long): Application = remote {
-        client.from("applications").select(Columns.raw(Selects.APPLICATION_REVIEW)) {
-            filter { eq("id", id) }
-        }.decodeSingleOrNull<Application>()
-    } ?: throw NoSuchElementException("Proposta não encontrada")
+    override suspend fun get(id: Long): Application {
+        user.require()
+        return remote {
+            // Clients can't read client_profiles of others, but their own embed resolves fine.
+            client.from("applications").select(Columns.raw(Selects.APPLICATION_REVIEW)) {
+                filter { eq("id", id) }
+            }.decodeSingleOrNull<Application>()?.sortedOffers()
+        } ?: throw NoSuchElementException("Proposta não encontrada")
+    }
+
+    override suspend fun counter(
+        id: Long,
+        price: Long,
+        message: String?,
+        guaranteeType: GuaranteeType?,
+        moveInDate: String?,
+    ): Offer {
+        user.require()
+        val params = buildJsonObject {
+            put("p_application_id", id)
+            put("p_price", price)
+            put("p_message", message.blankToNull())
+            put("p_guarantee_type", guaranteeType?.let { wire(it) })
+            put("p_move_in_date", moveInDate.blankToNull())
+        }
+        return remote { client.postgrest.rpc("proposal_counter", params).decodeAs<Offer>() }
+    }
+
+    override suspend fun accept(id: Long): Application = transition("proposal_accept", id)
+
+    override suspend fun decline(id: Long, note: String?): Application =
+        transition("proposal_decline", id) { put("p_note", note.blankToNull()) }
+
+    override suspend fun markDocsSent(id: Long): Application = transition("proposal_docs_sent", id)
+
+    /** Calls a lifecycle RPC, then re-reads the row with its embeds. */
+    private suspend fun transition(fn: String, id: Long, extra: JsonObjectBuilder.() -> Unit = {}): Application {
+        user.require()
+        val params = buildJsonObject {
+            put("p_application_id", id)
+            extra()
+        }
+        remote { client.postgrest.rpc(fn, params) }
+        return get(id)
+    }
 
     override suspend fun review(id: Long, status: ApplicationStatus, note: String?) {
         val uid = user.require()
@@ -430,23 +477,14 @@ internal class SupabaseDocumentRepository(
         }
     }
 
-    // client_documents has no UPDATE grant/policy for clients (0012), so linking re-inserts
-    // each row with application_id set (same storage object) and deletes the unlinked original.
+    // Plain UPDATE: migration 0013 lets clients link their own documents to their own proposta.
     override suspend fun attachToApplication(documentIds: List<Long>, applicationId: Long) {
         val uid = user.require()
         if (documentIds.isEmpty()) return
         remote {
-            val docs = client.from("client_documents").select {
+            client.from("client_documents").update(DocumentApplicationPatch(applicationId)) {
                 filter {
                     isIn("id", documentIds.distinct())
-                    eq("user_id", uid)
-                }
-            }.decodeList<ClientDocument>().filter { it.applicationId != applicationId }
-            if (docs.isEmpty()) return@remote
-            client.from("client_documents").insert(docs.map { DocumentInsert.copyOf(it, applicationId) })
-            client.from("client_documents").delete {
-                filter {
-                    isIn("id", docs.map { it.id })
                     eq("user_id", uid)
                 }
             }
@@ -606,7 +644,7 @@ internal class SupabaseDashboardRepository(
             val leads = async { countRows("inquiries") { eq("stage", wire(InquiryStage.INBOX)) } }
             val apps = async {
                 countRows("applications") {
-                    isIn("status", listOf(wire(ApplicationStatus.SUBMITTED), wire(ApplicationStatus.UNDER_REVIEW)))
+                    eq("awaiting", "realtor")
                 }
             }
             val visits = async {

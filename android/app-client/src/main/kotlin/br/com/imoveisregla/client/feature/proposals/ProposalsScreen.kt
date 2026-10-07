@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,23 +61,21 @@ import br.com.imoveisregla.core.designsystem.StatusPill
 import br.com.imoveisregla.core.model.Application
 import br.com.imoveisregla.core.model.ApplicationStatus
 import br.com.imoveisregla.core.model.Currency
+import br.com.imoveisregla.core.model.Party
+import br.com.imoveisregla.core.designsystem.pillColors
 import br.com.imoveisregla.core.model.formatPrice
 import br.com.imoveisregla.core.model.label
 import br.com.imoveisregla.core.model.listingRef
 
-/** Pill colors (foreground, background) for each proposal status. */
-fun applicationStatusColors(status: ApplicationStatus): Pair<Color, Color> = when (status) {
-    ApplicationStatus.SUBMITTED -> Regla.Info to Regla.InfoSoft
-    ApplicationStatus.UNDER_REVIEW -> Regla.Navy to Regla.NavySoft
-    ApplicationStatus.DOCS_REQUESTED -> Regla.Warn to Regla.WarnSoft
-    ApplicationStatus.APPROVED -> Regla.Ok to Regla.OkSoft
-    ApplicationStatus.REJECTED -> Regla.Danger to Regla.DangerSoft
-    ApplicationStatus.WITHDRAWN -> Regla.Muted to Regla.NavySoft
-}
+/** Pill colors (foreground, background) for each proposal status (shared design-system palette). */
+fun applicationStatusColors(status: ApplicationStatus): Pair<Color, Color> =
+    status.pillColors().let { it.foreground to it.background }
+
+const val YOUR_TURN_LABEL = "Sua vez"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProposalsScreen(onOpenListing: (Long) -> Unit, onRequireLogin: () -> Unit, onOpenDocuments: () -> Unit) {
+fun ProposalsScreen(onOpenListing: (Long) -> Unit, onRequireLogin: () -> Unit, onOpenProposal: (Long) -> Unit) {
     val container = LocalAppContainer.current
     val vm: ProposalsViewModel = viewModel { ProposalsViewModel(container.auth, container.applications) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -131,7 +130,7 @@ fun ProposalsScreen(onOpenListing: (Long) -> Unit, onRequireLogin: () -> Unit, o
                                     app = app,
                                     withdrawing = state.withdrawingId == app.id,
                                     onOpenListing = { onOpenListing(app.listingId) },
-                                    onOpenDocuments = onOpenDocuments,
+                                    onOpen = { onOpenProposal(app.id) },
                                     onWithdraw = { vm.askWithdraw(app) },
                                 )
                             }
@@ -149,7 +148,7 @@ fun ProposalsScreen(onOpenListing: (Long) -> Unit, onRequireLogin: () -> Unit, o
             title = { Text("Cancelar proposta?") },
             text = {
                 Text(
-                    "A proposta de ${formatPrice(pending.offeredPrice, pending.listings?.currency ?: Currency.BRL)} " +
+                    "A proposta de ${formatPrice(pending.currentPrice, pending.listings?.currency ?: Currency.BRL)} " +
                         "para \"${proposalTitle(pending)}\" será cancelada. Essa ação não pode ser desfeita.",
                 )
             },
@@ -168,18 +167,27 @@ private fun ProposalCard(
     app: Application,
     withdrawing: Boolean,
     onOpenListing: () -> Unit,
-    onOpenDocuments: () -> Unit,
+    onOpen: () -> Unit,
     onWithdraw: () -> Unit,
 ) {
+    val yourTurn = app.isTurnOf(Party.CLIENT)
     val currency = app.listings?.currency ?: Currency.BRL
     val (fg, bg) = applicationStatusColors(app.status)
     Card(
         shape = RoundedCornerShape(Regla.RadiusCard),
         colors = CardDefaults.cardColors(containerColor = Regla.Surface),
-        border = BorderStroke(1.dp, Regla.Line),
-        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(if (yourTurn) 2.dp else 1.dp, if (yourTurn) Regla.Coral else Regla.Line),
+        modifier = Modifier.fillMaxWidth().testTag("proposal-${app.id}").clickable(onClick = onOpen),
     ) {
         Column(Modifier.padding(16.dp)) {
+            if (yourTurn) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusPill(YOUR_TURN_LABEL, color = Color.White, background = Regla.Coral)
+                    Spacer(Modifier.width(8.dp))
+                    Text(clientHeadline(app), style = MaterialTheme.typography.labelLarge, color = Regla.CoralInk)
+                }
+                Spacer(Modifier.height(10.dp))
+            }
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f).clickable(onClick = onOpenListing)) {
                     Text(
@@ -197,8 +205,13 @@ private fun ProposalCard(
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
-                    Text("Sua oferta · ${app.intent.label}", style = MaterialTheme.typography.labelMedium, color = Regla.Muted)
-                    Text(formatPrice(app.offeredPrice, currency), style = MaterialTheme.typography.titleLarge, color = Regla.Navy)
+                    val priceLabel = when {
+                        app.agreedPrice != null -> "Valor acordado"
+                        app.latestOffer?.author == Party.REALTOR -> "Contraproposta"
+                        else -> "Sua oferta"
+                    }
+                    Text("$priceLabel · ${app.intent.label}", style = MaterialTheme.typography.labelMedium, color = Regla.Muted)
+                    Text(formatPrice(app.currentPrice, currency), style = MaterialTheme.typography.titleLarge, color = Regla.Navy)
                 }
                 val created = formatProposalDate(app.createdAt)
                 if (created.isNotEmpty()) {
@@ -224,9 +237,14 @@ private fun ProposalCard(
                 }
             }
 
-            if (app.status == ApplicationStatus.DOCS_REQUESTED) {
+            if (yourTurn) {
                 Spacer(Modifier.height(12.dp))
-                ReglaButton("Enviar documentos", onOpenDocuments, kind = ButtonKind.Accent, modifier = Modifier.fillMaxWidth())
+                ReglaButton(
+                    text = if (app.status.isDocumentsPhase) "Enviar documentos" else "Responder",
+                    onClick = onOpen,
+                    kind = ButtonKind.Accent,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             if (app.status.isOpen) {
                 Spacer(Modifier.height(4.dp))

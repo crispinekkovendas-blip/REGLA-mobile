@@ -200,13 +200,43 @@ enum class GuaranteeType {
 enum class ApplicationStatus {
     @SerialName("submitted") SUBMITTED,
     @SerialName("under_review") UNDER_REVIEW,
+    @SerialName("negotiating") NEGOTIATING,
+    @SerialName("accepted") ACCEPTED,
+    @SerialName("docs_review") DOCS_REVIEW,
     @SerialName("docs_requested") DOCS_REQUESTED,
     @SerialName("approved") APPROVED,
     @SerialName("rejected") REJECTED,
     @SerialName("withdrawn") WITHDRAWN;
 
-    val isOpen: Boolean get() = this == SUBMITTED || this == UNDER_REVIEW || this == DOCS_REQUESTED
+    val isOpen: Boolean get() = this != APPROVED && this != REJECTED && this != WITHDRAWN
+
+    /** Price/terms still being negotiated (accept / counter / decline). */
+    val isNegotiation: Boolean get() = this == SUBMITTED || this == UNDER_REVIEW || this == NEGOTIATING
+
+    /** Proposta accepted; client uploads documents, realtor reviews them. */
+    val isDocumentsPhase: Boolean get() = this == ACCEPTED || this == DOCS_REVIEW || this == DOCS_REQUESTED
 }
+
+/** Side of a negotiation. The realtor acts on behalf of the owner. */
+@Serializable
+enum class Party {
+    @SerialName("client") CLIENT,
+    @SerialName("realtor") REALTOR,
+}
+
+/** One offer in a proposta's negotiation timeline (the first is the proposta itself). */
+@Serializable
+data class Offer(
+    val id: Long,
+    @SerialName("application_id") val applicationId: Long,
+    val author: Party,
+    @SerialName("author_id") val authorId: String? = null,
+    val price: Long,
+    @SerialName("guarantee_type") val guaranteeType: GuaranteeType? = null,
+    @SerialName("move_in_date") val moveInDate: String? = null,
+    val message: String? = null,
+    @SerialName("created_at") val createdAt: String = "",
+)
 
 /** A "proposta" — the client's formal offer/application on a listing. */
 @Serializable
@@ -227,7 +257,19 @@ data class Application(
     @SerialName("updated_at") val updatedAt: String = "",
     val listings: ListingRef? = null,
     @SerialName("client_profiles") val profile: ClientProfile? = null,
-)
+    @SerialName("agreed_price") val agreedPrice: Long? = null,
+    /** Whose turn it is; null once the proposta is closed. */
+    val awaiting: Party? = null,
+    /** Negotiation timeline, oldest first (embedded `application_offers`). */
+    @SerialName("application_offers") val offers: List<Offer> = emptyList(),
+) {
+    val latestOffer: Offer? get() = offers.lastOrNull()
+
+    /** Price on the table: agreed price, else the latest offer, else the original proposta. */
+    val currentPrice: Long get() = agreedPrice ?: latestOffer?.price ?: offeredPrice
+
+    fun isTurnOf(party: Party): Boolean = status.isOpen && awaiting == party
+}
 
 @Serializable
 enum class DocumentKind {

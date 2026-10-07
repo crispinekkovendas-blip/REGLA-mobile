@@ -42,6 +42,11 @@ private fun postgrestMessage(e: PostgrestRestException): String {
     val raw = e.message.orEmpty()
     return when {
         raw.contains("clients can only withdraw", ignoreCase = true) -> "Esta proposta não pode mais ser cancelada"
+        raw.contains("not your turn", ignoreCase = true) -> "Aguarde a resposta da outra parte"
+        raw.contains("cannot accept your own offer", ignoreCase = true) -> "Você não pode aceitar a sua própria oferta"
+        raw.contains("only be sent after acceptance", ignoreCase = true) ->
+            "Os documentos só podem ser enviados após a proposta ser aceita"
+        raw.contains("already closed", ignoreCase = true) -> "Esta proposta já foi encerrada"
         e.code == "42501" || raw.contains("row-level security", ignoreCase = true) ->
             "Você não tem permissão para esta ação."
         e.code == "23505" -> "Este registro já existe."

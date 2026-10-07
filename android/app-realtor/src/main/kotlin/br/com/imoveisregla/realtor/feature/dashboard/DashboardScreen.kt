@@ -46,6 +46,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.imoveisregla.core.designsystem.ErrorState
 import br.com.imoveisregla.core.designsystem.LoadingState
 import br.com.imoveisregla.core.designsystem.Regla
+import br.com.imoveisregla.core.designsystem.pillColors
 import br.com.imoveisregla.core.designsystem.SectionTitle
 import br.com.imoveisregla.core.designsystem.StatusPill
 import br.com.imoveisregla.core.model.Application
@@ -267,14 +268,8 @@ private fun VisitRow(v: Showing, now: OffsetDateTime, onClick: () -> Unit) {
     }
 }
 
-private fun ApplicationStatus.colors(): Pair<Color, Color> = when (this) {
-    ApplicationStatus.SUBMITTED -> Regla.Info to Regla.InfoSoft
-    ApplicationStatus.UNDER_REVIEW -> Regla.Warn to Regla.WarnSoft
-    ApplicationStatus.DOCS_REQUESTED -> Regla.Coral to Regla.CoralSoft
-    ApplicationStatus.APPROVED -> Regla.Ok to Regla.OkSoft
-    ApplicationStatus.REJECTED -> Regla.Danger to Regla.DangerSoft
-    ApplicationStatus.WITHDRAWN -> Regla.Muted to Regla.NavySoft
-}
+private fun ApplicationStatus.colors(): Pair<Color, Color> =
+    pillColors().let { it.foreground to it.background }
 
 @Composable
 private fun ProposalRow(a: Application, onClick: () -> Unit) {

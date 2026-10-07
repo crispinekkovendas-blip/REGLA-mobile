@@ -11,6 +11,8 @@ import br.com.imoveisregla.core.model.Inquiry
 import br.com.imoveisregla.core.model.InquiryStage
 import br.com.imoveisregla.core.model.LeadNote
 import br.com.imoveisregla.core.model.Listing
+import br.com.imoveisregla.core.model.Offer
+import br.com.imoveisregla.core.model.Party
 import br.com.imoveisregla.core.model.ListingPhoto
 import br.com.imoveisregla.core.model.ListingStatus
 import br.com.imoveisregla.core.model.ListingType
@@ -107,7 +109,33 @@ object SampleData {
             guaranteeType = GuaranteeType.SEGURO_FIANCA, moveInDate = now.plusDays(20).toLocalDate().toString(),
             message = "Podemos fechar em 30 meses?", status = ApplicationStatus.UNDER_REVIEW, inquiryId = 105,
             createdAt = now.minusHours(6).toString(), updatedAt = now.minusHours(2).toString(),
-            listings = db.listingRef(1),
+            awaiting = Party.REALTOR,
+        )
+        db.offerRows += Offer(
+            id = 3011, applicationId = 301, author = Party.CLIENT, authorId = "client-1", price = 4_600,
+            guaranteeType = GuaranteeType.SEGURO_FIANCA, moveInDate = now.plusDays(20).toLocalDate().toString(),
+            message = "Podemos fechar em 30 meses?", createdAt = now.minusHours(6).toString(),
+        )
+
+        // A live negotiation where the owner countered and it is the client's turn.
+        db.applicationRows += Application(
+            id = 302, listingId = 5, userId = "client-1", intent = ApplicationIntent.RENT, offeredPrice = 3_600,
+            guaranteeType = GuaranteeType.CAUCAO, moveInDate = now.plusDays(30).toLocalDate().toString(),
+            message = "Posso pagar 3 meses de caução.", status = ApplicationStatus.NEGOTIATING,
+            createdAt = now.minusDays(1).toString(), updatedAt = now.minusHours(3).toString(),
+            awaiting = Party.CLIENT,
+        )
+        db.offerRows += listOf(
+            Offer(
+                id = 3021, applicationId = 302, author = Party.CLIENT, authorId = "client-1", price = 3_600,
+                guaranteeType = GuaranteeType.CAUCAO, moveInDate = now.plusDays(30).toLocalDate().toString(),
+                message = "Posso pagar 3 meses de caução.", createdAt = now.minusDays(1).toString(),
+            ),
+            Offer(
+                id = 3022, applicationId = 302, author = Party.REALTOR, authorId = "realtor-1", price = 3_800,
+                guaranteeType = GuaranteeType.CAUCAO, moveInDate = now.plusDays(30).toLocalDate().toString(),
+                message = "O proprietário aceita caução, mas pede R$ 3.800.", createdAt = now.minusHours(3).toString(),
+            ),
         )
     }
 }

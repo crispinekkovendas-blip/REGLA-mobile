@@ -29,8 +29,9 @@ class ProposalsViewModelTest {
         val s = vm(FakeBackend(asRealtor = false)).state.value
         assertTrue(s.signedIn)
         assertFalse(s.loading)
-        assertEquals(listOf(301L), s.items.map { it.id })
-        assertEquals(ApplicationStatus.UNDER_REVIEW, s.items.single().status)
+        assertEquals(listOf(301L, 302L), s.items.map { it.id })
+        assertEquals(ApplicationStatus.UNDER_REVIEW, s.items.first().status)
+        assertEquals(ApplicationStatus.NEGOTIATING, s.items.last().status)
     }
 
     @Test fun `signed out shows login state`() {
@@ -42,13 +43,13 @@ class ProposalsViewModelTest {
     @Test fun `withdraw cancels an open proposal after confirmation`() {
         val db = FakeBackend(asRealtor = false)
         val vm = vm(db)
-        val app = vm.state.value.items.single()
+        val app = vm.state.value.items.first { it.id == 301L }
         vm.askWithdraw(app)
         assertEquals(app, vm.state.value.confirmWithdraw)
         vm.confirmWithdraw()
         assertNull(vm.state.value.confirmWithdraw)
         assertEquals(ApplicationStatus.WITHDRAWN, db.applicationRows.single { it.id == 301L }.status)
-        assertEquals(ApplicationStatus.WITHDRAWN, vm.state.value.items.single().status)
+        assertEquals(ApplicationStatus.WITHDRAWN, vm.state.value.items.first { it.id == 301L }.status)
         assertEquals("Proposta cancelada", vm.state.value.message)
     }
 
@@ -76,19 +77,22 @@ class ProposalsViewModelTest {
         )
         vm.refresh()
         assertFalse(vm.state.value.refreshing)
-        assertEquals(listOf(777L, 301L), vm.state.value.items.map { it.id })
+        assertEquals(listOf(777L, 301L, 302L), vm.state.value.items.map { it.id })
     }
 
     @Test fun `timeline step mapping`() {
         fun states(s: ApplicationStatus) = proposalTimeline(s).map { it.state }
         fun labels(s: ApplicationStatus) = proposalTimeline(s).map { it.label }
 
-        assertEquals(listOf(TimelineState.CURRENT, TimelineState.PENDING, TimelineState.PENDING), states(ApplicationStatus.SUBMITTED))
-        assertEquals(listOf(TimelineState.DONE, TimelineState.CURRENT, TimelineState.PENDING), states(ApplicationStatus.UNDER_REVIEW))
-        assertEquals(listOf(TimelineState.DONE, TimelineState.WARNING, TimelineState.PENDING), states(ApplicationStatus.DOCS_REQUESTED))
-        assertEquals("Documentos pendentes", labels(ApplicationStatus.DOCS_REQUESTED)[1])
-        assertEquals(listOf(TimelineState.DONE, TimelineState.DONE, TimelineState.DONE), states(ApplicationStatus.APPROVED))
-        assertEquals(listOf("Enviada", "Em análise", "Aprovada"), labels(ApplicationStatus.APPROVED))
+        val d = TimelineState.DONE
+        val p = TimelineState.PENDING
+        assertEquals(listOf(TimelineState.CURRENT, p, p, p), states(ApplicationStatus.SUBMITTED))
+        assertEquals(listOf(d, TimelineState.CURRENT, p, p), states(ApplicationStatus.NEGOTIATING))
+        assertEquals(listOf(d, d, TimelineState.WARNING, p), states(ApplicationStatus.ACCEPTED))
+        assertEquals(listOf(d, d, TimelineState.CURRENT, p), states(ApplicationStatus.DOCS_REVIEW))
+        assertEquals(listOf(d, d, TimelineState.WARNING, p), states(ApplicationStatus.DOCS_REQUESTED))
+        assertEquals(listOf(d, d, d, d), states(ApplicationStatus.APPROVED))
+        assertEquals(listOf("Enviada", "Negociação", "Documentos", "Aprovada"), labels(ApplicationStatus.APPROVED))
         assertEquals(TimelineState.FAILED, states(ApplicationStatus.REJECTED).last())
         assertEquals("Recusada", labels(ApplicationStatus.REJECTED).last())
         assertEquals(listOf("Enviada", "Cancelada"), labels(ApplicationStatus.WITHDRAWN))

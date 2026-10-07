@@ -46,7 +46,8 @@ class DashboardViewModelTest {
 
         assertEquals(2, s.newLeads.size)
         assertTrue(s.newLeads.all { it.stage == InquiryStage.INBOX })
-        assertEquals(1, s.recentProposals.size)
+        assertEquals(2, s.recentProposals.size)
+        assertEquals(301L, s.recentProposals.first().id) // realtor's turn first
         assertTrue(s.upcomingVisits.size <= 3)
         assertEquals("corretor@imoveisregla.com.br", s.email)
     }
@@ -66,7 +67,7 @@ class DashboardViewModelTest {
 
         val s = vm.state.value
         assertEquals(2, s.stats?.pendingApplications)
-        assertEquals(2, s.recentProposals.size)
+        assertEquals(3, s.recentProposals.size)
         assertTrue(s.recentProposals.any { it.profile?.fullName == "Ana Teste" })
     }
 

@@ -1,5 +1,6 @@
 package br.com.imoveisregla.realtor.feature.proposals
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,6 +79,8 @@ import br.com.imoveisregla.core.model.ApplicationIntent
 import br.com.imoveisregla.core.model.ApplicationStatus
 import br.com.imoveisregla.core.model.ClientDocument
 import br.com.imoveisregla.core.model.Currency
+import br.com.imoveisregla.core.model.Offer
+import br.com.imoveisregla.core.model.Party
 import br.com.imoveisregla.core.model.affordability
 import br.com.imoveisregla.core.model.formatPrice
 import br.com.imoveisregla.core.model.label
@@ -109,17 +112,17 @@ fun ProposalsScreen(onOpenApplication: (Long) -> Unit) {
             contentPadding = PaddingValues(horizontal = Regla.Gutter),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(PROPOSAL_FILTERS, key = { it?.name ?: "ALL" }) { f ->
+            items(ProposalFilter.entries, key = { it.name }) { f ->
                 FilterChip(
                     selected = state.filter == f,
                     onClick = { vm.setFilter(f) },
-                    label = { Text("${filterLabel(f)} (${counts[f] ?: 0})") },
+                    label = { Text("${f.label} (${counts[f] ?: 0})") },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = Regla.Navy,
                         selectedLabelColor = Color.White,
                         containerColor = Regla.Surface,
                     ),
-                    modifier = Modifier.testTag("filter-${f?.name ?: "ALL"}"),
+                    modifier = Modifier.testTag("filter-${f.name}"),
                 )
             }
         }
@@ -140,8 +143,8 @@ fun ProposalsScreen(onOpenApplication: (Long) -> Unit) {
                             } else {
                                 EmptyState(
                                     "Nada por aqui",
-                                    "Nenhuma proposta com status \"${filterLabel(state.filter)}\".",
-                                    action = { ReglaButton("Ver todas", { vm.setFilter(null) }, kind = ButtonKind.Secondary) },
+                                    "Nenhuma proposta em \"${state.filter.label}\".",
+                                    action = { ReglaButton("Ver todas", { vm.setFilter(ProposalFilter.ALL) }, kind = ButtonKind.Secondary) },
                                 )
                             }
                         }
@@ -165,14 +168,24 @@ fun ProposalsScreen(onOpenApplication: (Long) -> Unit) {
 private fun ProposalCard(app: Application, onClick: () -> Unit) {
     val listing = app.listings
     val currency = listing?.currency ?: Currency.BRL
-    val diff = listing?.let { priceDiffPercent(app.offeredPrice, it.price) }
+    val price = app.currentPrice
+    val diff = listing?.let { priceDiffPercent(price, it.price) }
+    val yourTurn = app.isTurnOf(Party.REALTOR)
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(Regla.RadiusCard),
         colors = CardDefaults.cardColors(containerColor = Regla.Surface),
+        border = if (yourTurn) BorderStroke(2.dp, Regla.Coral) else null,
         modifier = Modifier.fillMaxWidth().testTag("proposal-${app.id}"),
     ) {
         Column(Modifier.padding(Regla.Gutter), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (yourTurn) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusPill("Sua vez", Color.White, Regla.Coral)
+                    Spacer(Modifier.width(8.dp))
+                    Text(realtorHeadline(app), style = MaterialTheme.typography.labelMedium, color = Regla.CoralInk, maxLines = 1)
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     app.profile?.fullName ?: "Cliente sem cadastro",
@@ -189,7 +202,7 @@ private fun ProposalCard(app: Application, onClick: () -> Unit) {
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    formatPrice(app.offeredPrice, currency),
+                    formatPrice(price, currency),
                     style = MaterialTheme.typography.titleMedium,
                     color = Regla.Navy,
                 )
@@ -207,7 +220,7 @@ private fun ProposalCard(app: Application, onClick: () -> Unit) {
                 Text(app.intent.label, style = MaterialTheme.typography.labelMedium, color = Regla.Navy)
                 if (app.intent == ApplicationIntent.RENT) {
                     Spacer(Modifier.width(12.dp))
-                    val aff = affordability(app.offeredPrice, app.profile?.monthlyIncome)
+                    val aff = affordability(price, app.profile?.monthlyIncome)
                     Dot(affordabilityColor(aff))
                     Spacer(Modifier.width(6.dp))
                     Text(affordabilityRealtorLabel(aff), style = MaterialTheme.typography.labelMedium, color = Regla.Muted)
@@ -254,7 +267,7 @@ fun ApplicationDetailScreen(applicationId: Long, onBack: () -> Unit, onOpenListi
     val snackbar = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
-    var dialog by remember { mutableStateOf<ApplicationStatus?>(null) }
+    var dialog by remember { mutableStateOf<DetailDialog?>(null) }
 
     LaunchedEffect(state.message) {
         val m = state.message ?: return@LaunchedEffect
@@ -277,14 +290,13 @@ fun ApplicationDetailScreen(applicationId: Long, onBack: () -> Unit, onOpenListi
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (app != null && app.status.isOpen) {
-                ReviewActionBar(
-                    status = app.status,
+                RealtorActionBar(
+                    app = app,
+                    action = state.action,
                     enabled = state.canAct,
                     loading = state.submitting,
                     onUnderReview = { vm.review(ApplicationStatus.UNDER_REVIEW, null) },
-                    onRequestDocs = { dialog = ApplicationStatus.DOCS_REQUESTED },
-                    onApprove = { dialog = ApplicationStatus.APPROVED },
-                    onReject = { dialog = ApplicationStatus.REJECTED },
+                    onOpen = { dialog = it },
                 )
             }
         },
@@ -315,39 +327,113 @@ fun ApplicationDetailScreen(applicationId: Long, onBack: () -> Unit, onOpenListi
         }
     }
 
-    val target = dialog
-    if (target != null) when (target) {
-        ApplicationStatus.APPROVED -> AlertDialog(
-            onDismissRequest = { dialog = null },
-            title = { Text("Aprovar proposta?") },
-            text = { Text("O cliente será avisado da aprovação e o lead será marcado como fechado.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    dialog = null
-                    vm.review(ApplicationStatus.APPROVED, null)
-                }) { Text("Aprovar", color = Regla.Coral, fontWeight = FontWeight.SemiBold) }
-            },
-            dismissButton = { TextButton(onClick = { dialog = null }) { Text("Voltar") } },
-        )
-        ApplicationStatus.DOCS_REQUESTED, ApplicationStatus.REJECTED -> {
-            val missing = missingRequiredDocs(state.documents)
-            NoteDialog(
-                title = if (target == ApplicationStatus.REJECTED) "Recusar proposta" else "Pedir documentos",
-                confirmLabel = if (target == ApplicationStatus.REJECTED) "Recusar" else "Enviar pedido",
-                initial = if (target == ApplicationStatus.DOCS_REQUESTED && missing.isNotEmpty()) {
-                    "Por favor, envie: " + missing.joinToString(", ") { it.label } + "."
-                } else "",
-                hint = if (target == ApplicationStatus.REJECTED) "Motivo da recusa (o cliente verá esta mensagem)"
-                else "Quais documentos o cliente precisa enviar?",
-                onDismiss = { dialog = null },
-                onConfirm = { note ->
-                    dialog = null
-                    vm.review(target, note)
+    val current = dialog
+    if (current != null && app != null) {
+        val close = { dialog = null }
+        when (current) {
+            DetailDialog.ACCEPT -> AlertDialog(
+                onDismissRequest = close,
+                title = { Text("Aceitar proposta?") },
+                text = {
+                    Text(
+                        "O cliente será avisado de que a proposta de ${formatPrice(app.currentPrice, app.listings?.currency ?: Currency.BRL)} " +
+                            "foi aceita e vai enviar os documentos para a análise.",
+                    )
                 },
+                confirmButton = {
+                    TextButton(onClick = { close(); vm.accept() }) {
+                        Text("Aceitar", color = Regla.Coral, fontWeight = FontWeight.SemiBold)
+                    }
+                },
+                dismissButton = { TextButton(onClick = close) { Text("Voltar") } },
+            )
+            DetailDialog.COUNTER -> CounterDialog(
+                current = app.currentPrice,
+                currency = app.listings?.currency ?: Currency.BRL,
+                onDismiss = close,
+                onConfirm = { price, note -> if (vm.counter(price, note) == null) close() },
+            )
+            DetailDialog.APPROVE -> {
+                val missing = missingRequiredDocs(state.documents)
+                AlertDialog(
+                    onDismissRequest = close,
+                    title = { Text("Aprovar proposta?") },
+                    text = {
+                        Text(
+                            (if (missing.isNotEmpty()) "Atenção: faltam ${missing.joinToString(", ") { it.label }}. " else "") +
+                                "O cliente será avisado da aprovação e o lead será marcado como fechado.",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { close(); vm.review(ApplicationStatus.APPROVED, null) }) {
+                            Text("Aprovar", color = Regla.Coral, fontWeight = FontWeight.SemiBold)
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = close) { Text("Voltar") } },
+                )
+            }
+            DetailDialog.REQUEST_DOCS -> {
+                val missing = missingRequiredDocs(state.documents)
+                NoteDialog(
+                    title = "Pedir correção",
+                    confirmLabel = "Enviar pedido",
+                    initial = if (missing.isNotEmpty()) "Por favor, envie: " + missing.joinToString(", ") { it.label } + "." else "",
+                    hint = "O que o cliente precisa corrigir ou enviar?",
+                    onDismiss = close,
+                    onConfirm = { note -> close(); vm.review(ApplicationStatus.DOCS_REQUESTED, note) },
+                )
+            }
+            DetailDialog.DECLINE -> NoteDialog(
+                title = "Recusar proposta",
+                confirmLabel = "Recusar",
+                initial = "",
+                hint = "Motivo da recusa (o cliente verá esta mensagem)",
+                onDismiss = close,
+                onConfirm = { note -> close(); vm.decline(note) },
             )
         }
-        else -> Unit
     }
+}
+
+enum class DetailDialog { ACCEPT, COUNTER, DECLINE, APPROVE, REQUEST_DOCS }
+
+@Composable
+private fun CounterDialog(
+    current: Long,
+    currency: Currency,
+    onDismiss: () -> Unit,
+    onConfirm: (Long?, String?) -> Unit,
+) {
+    var digits by remember { mutableStateOf(current.toString()) }
+    var note by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("counter-dialog"),
+        title = { Text("Contraproposta do proprietário") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Oferta atual: ${formatPrice(current, currency)}", style = MaterialTheme.typography.bodyMedium, color = Regla.Muted)
+                ReglaTextField(
+                    value = digits.toLongOrNull()?.let { formatPrice(it, currency) } ?: "",
+                    onValueChange = { v -> digits = v.filter(Char::isDigit).trimStart('0').take(12) },
+                    label = "Novo valor",
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    modifier = Modifier.testTag("counter-price"),
+                )
+                ReglaTextField(
+                    value = note,
+                    onValueChange = { note = it.take(500) },
+                    label = "Mensagem ao cliente (opcional)",
+                    singleLine = false,
+                    minLines = 2,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(digits.toLongOrNull(), note) }) { Text("Enviar", fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }
 
 @Composable
@@ -389,33 +475,51 @@ private fun NoteDialog(
 }
 
 @Composable
-private fun ReviewActionBar(
-    status: ApplicationStatus,
+private fun RealtorActionBar(
+    app: Application,
+    action: RealtorAction,
     enabled: Boolean,
     loading: Boolean,
     onUnderReview: () -> Unit,
-    onRequestDocs: () -> Unit,
-    onApprove: () -> Unit,
-    onReject: () -> Unit,
+    onOpen: (DetailDialog) -> Unit,
 ) {
     Surface(color = Regla.Surface, shadowElevation = 8.dp) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = Regla.Gutter, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReglaButton(
-                    "Em análise", onUnderReview, Modifier.weight(1f), kind = ButtonKind.Secondary,
-                    enabled = enabled && status != ApplicationStatus.UNDER_REVIEW,
-                )
-                ReglaButton(
-                    "Pedir documentos", onRequestDocs, Modifier.weight(1f), kind = ButtonKind.Secondary,
-                    enabled = enabled,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReglaButton("Recusar", onReject, Modifier.weight(1f), kind = ButtonKind.Secondary, enabled = enabled)
-                ReglaButton("Aprovar", onApprove, Modifier.weight(1f), kind = ButtonKind.Accent, enabled = enabled, loading = loading)
+            when (action) {
+                RealtorAction.RESPOND_OFFER -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ReglaButton("Contrapropor", { onOpen(DetailDialog.COUNTER) }, Modifier.weight(1f), kind = ButtonKind.Secondary, enabled = enabled)
+                        ReglaButton("Aceitar", { onOpen(DetailDialog.ACCEPT) }, Modifier.weight(1f), kind = ButtonKind.Accent, enabled = enabled, loading = loading)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (app.status == ApplicationStatus.SUBMITTED) {
+                            ReglaButton("Em análise", onUnderReview, Modifier.weight(1f), kind = ButtonKind.Secondary, enabled = enabled)
+                        }
+                        ReglaButton("Recusar", { onOpen(DetailDialog.DECLINE) }, Modifier.weight(1f), kind = ButtonKind.Secondary, enabled = enabled)
+                    }
+                }
+                RealtorAction.REVIEW_DOCS -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ReglaButton("Pedir correção", { onOpen(DetailDialog.REQUEST_DOCS) }, Modifier.weight(1f), kind = ButtonKind.Secondary, enabled = enabled)
+                        ReglaButton("Aprovar", { onOpen(DetailDialog.APPROVE) }, Modifier.weight(1f), kind = ButtonKind.Accent, enabled = enabled, loading = loading)
+                    }
+                    ReglaButton("Recusar", { onOpen(DetailDialog.DECLINE) }, Modifier.fillMaxWidth(), kind = ButtonKind.Secondary, enabled = enabled)
+                }
+                RealtorAction.WAIT_CLIENT -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        realtorHeadline(app),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Regla.Muted,
+                        modifier = Modifier.weight(1f).testTag("waiting-client"),
+                    )
+                    TextButton(onClick = { onOpen(DetailDialog.DECLINE) }, enabled = enabled) {
+                        Text("Recusar", color = Regla.Danger)
+                    }
+                }
+                RealtorAction.CLOSED -> Unit
             }
         }
     }
@@ -448,6 +552,13 @@ private fun ApplicationDetailContent(
                     color = Regla.Muted,
                 )
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                realtorHeadline(app),
+                style = MaterialTheme.typography.titleMedium,
+                color = if (app.isTurnOf(Party.REALTOR)) Regla.CoralInk else Regla.Ink,
+                modifier = Modifier.testTag("detail-headline"),
+            )
             Spacer(Modifier.height(12.dp))
             Timeline(timelineSteps(app))
             if (!app.reviewerNote.isNullOrBlank()) {
@@ -469,10 +580,11 @@ private fun ApplicationDetailContent(
             SectionTitle("Proposta")
             Spacer(Modifier.height(8.dp))
             InfoRow("Intenção", app.intent.label)
-            InfoRow("Valor ofertado", formatPrice(app.offeredPrice, currency))
+            InfoRow("Oferta inicial", formatPrice(app.offeredPrice, currency))
+            InfoRow(if (app.agreedPrice != null) "Valor acordado" else "Oferta atual", formatPrice(app.currentPrice, currency))
             if (listing != null && listing.price > 0) {
                 InfoRow("Valor anunciado", formatPrice(listing.price, currency))
-                InfoRow("Diferença", formatDiffPercent(priceDiffPercent(app.offeredPrice, listing.price)))
+                InfoRow("Diferença", formatDiffPercent(priceDiffPercent(app.currentPrice, listing.price)))
             }
             InfoRow("Garantia", app.guaranteeType?.label ?: "—")
             InfoRow("Mudança", app.moveInDate?.let { formatDateBr(it) } ?: "—")
@@ -480,6 +592,18 @@ private fun ApplicationDetailContent(
                 Spacer(Modifier.height(8.dp))
                 Text("Mensagem do cliente", style = MaterialTheme.typography.labelMedium, color = Regla.Muted)
                 Text("“${app.message}”", style = MaterialTheme.typography.bodyMedium, color = Regla.Ink)
+            }
+        }
+
+        // Negociação
+        if (app.offers.isNotEmpty()) {
+            SectionCard {
+                SectionTitle("Negociação")
+                Spacer(Modifier.height(8.dp))
+                app.offers.forEachIndexed { i, offer ->
+                    OfferRow(offer, currency, first = i == 0)
+                    if (i < app.offers.lastIndex) HorizontalDivider(color = Regla.Line)
+                }
             }
         }
 
@@ -520,7 +644,7 @@ private fun ApplicationDetailContent(
             Spacer(Modifier.height(8.dp))
             val income = profile?.monthlyIncome
             if (app.intent == ApplicationIntent.RENT) {
-                val aff = affordability(app.offeredPrice, income)
+                val aff = affordability(app.currentPrice, income)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Dot(affordabilityColor(aff), 12)
                     Spacer(Modifier.width(8.dp))
@@ -531,7 +655,7 @@ private fun ApplicationDetailContent(
                         modifier = Modifier.testTag("affordability"),
                     )
                 }
-                rentIncomePercent(app.offeredPrice, income)?.let { pct ->
+                rentIncomePercent(app.currentPrice, income)?.let { pct ->
                     Spacer(Modifier.height(4.dp))
                     Text("aluguel = $pct% da renda", style = MaterialTheme.typography.bodyMedium, color = Regla.Ink)
                 }
@@ -555,7 +679,17 @@ private fun ApplicationDetailContent(
         }
 
         // Documentos
-        SectionCard {
+        if (!app.status.isDocumentsPhase && app.status != ApplicationStatus.APPROVED) {
+            SectionCard {
+                SectionTitle("Documentos")
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Os documentos são pedidos ao cliente só depois que a proposta é aceita.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Regla.Muted,
+                )
+            }
+        } else SectionCard {
             SectionTitle("Documentos")
             Spacer(Modifier.height(8.dp))
             val missing = missingRequiredDocs(documents).toSet()
@@ -630,6 +764,31 @@ private fun ApplicationDetailContent(
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun OfferRow(offer: Offer, currency: Currency, first: Boolean) {
+    val fromClient = offer.author == Party.CLIENT
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("offer-${offer.id}"), verticalAlignment = Alignment.Top) {
+        Dot(if (fromClient) Regla.Navy else Regla.Coral, 10)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                when {
+                    fromClient && first -> "Proposta do cliente"
+                    fromClient -> "Contraproposta do cliente"
+                    else -> "Sua contraproposta"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = Regla.Muted,
+            )
+            Text(formatPrice(offer.price, currency), style = MaterialTheme.typography.titleMedium, color = Regla.Ink)
+            if (!offer.message.isNullOrBlank()) {
+                Text("“${offer.message}”", style = MaterialTheme.typography.bodyMedium, color = Regla.Ink)
+            }
+        }
+        Text(relativeTime(offer.createdAt), style = MaterialTheme.typography.labelMedium, color = Regla.Muted)
     }
 }
 

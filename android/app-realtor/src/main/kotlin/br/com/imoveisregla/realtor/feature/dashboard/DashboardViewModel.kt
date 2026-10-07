@@ -8,6 +8,7 @@ import br.com.imoveisregla.core.model.Application
 import br.com.imoveisregla.core.model.DashboardStats
 import br.com.imoveisregla.core.model.Inquiry
 import br.com.imoveisregla.core.model.InquiryStage
+import br.com.imoveisregla.core.model.Party
 import br.com.imoveisregla.core.model.Showing
 import br.com.imoveisregla.core.model.ShowingStatus
 import kotlinx.coroutines.CancellationException
@@ -88,7 +89,10 @@ class DashboardViewModel(
                 val visits = container.agenda.range(now.toString(), now.plusDays(7).toString())
                     .filter { it.status != ShowingStatus.CANCELLED }
                     .take(3)
-                val proposals = container.applications.forReview().take(3)
+                // Proposals waiting on the realtor first (stable sort keeps newest-first within each group).
+                val proposals = container.applications.forReview()
+                    .sortedByDescending { it.isTurnOf(Party.REALTOR) }
+                    .take(3)
                 val leads = container.leads.list(InquiryStage.INBOX).take(3)
                 _state.update {
                     it.copy(

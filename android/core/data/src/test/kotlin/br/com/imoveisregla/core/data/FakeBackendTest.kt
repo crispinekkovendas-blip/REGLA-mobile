@@ -4,6 +4,8 @@ import br.com.imoveisregla.core.data.fake.FakeBackend
 import br.com.imoveisregla.core.model.ApplicationInput
 import br.com.imoveisregla.core.model.ApplicationIntent
 import br.com.imoveisregla.core.model.ApplicationStatus
+import br.com.imoveisregla.core.model.GuaranteeType
+import br.com.imoveisregla.core.model.Party
 import br.com.imoveisregla.core.model.InquiryStage
 import br.com.imoveisregla.core.model.ListingFilters
 import br.com.imoveisregla.core.model.ListingStatus
@@ -66,6 +68,78 @@ class FakeBackendTest {
         assertEquals("Aprovado", app.reviewerNote)
         assertEquals("realtor-1", app.reviewedBy)
         assertEquals(InquiryStage.CLOSED_WON, fb.inquiryRows.single { it.id == 105L }.stage)
+    }
+
+    @Test
+    fun submitOpensNegotiationAwaitingRealtor() = runTest {
+        val fb = FakeBackend(asRealtor = false)
+        val app = fb.applications.submit(rentInput)
+        assertEquals(Party.REALTOR, app.awaiting)
+        assertEquals(listOf(Party.CLIENT), app.offers.map { it.author })
+        // not the client's turn yet: no counter / accept / documents
+        expectThrows<IllegalStateException> { fb.applications.counter(app.id, 4000, null) }
+        expectThrows<IllegalStateException> { fb.applications.accept(app.id) }
+        expectThrows<IllegalStateException> { fb.applications.markDocsSent(app.id) }
+    }
+
+    @Test
+    fun clientCountersThenItIsRealtorTurn() = runTest {
+        val fb = FakeBackend(asRealtor = false)
+        // seed 302: owner countered R$ 3.800, client's turn
+        assertTrue(fb.applications.get(302).isTurnOf(Party.CLIENT))
+        val o = fb.applications.counter(302, 3_700, " Meio termo? ")
+        assertEquals(Party.CLIENT, o.author)
+        assertEquals("Meio termo?", o.message)
+        assertEquals(GuaranteeType.CAUCAO, o.guaranteeType) // inherited from the previous offer
+        val app = fb.applications.get(302)
+        assertEquals(ApplicationStatus.NEGOTIATING, app.status)
+        assertEquals(Party.REALTOR, app.awaiting)
+        assertEquals(3_700L, app.currentPrice)
+        assertEquals(3, app.offers.size)
+        expectThrows<IllegalStateException> { fb.applications.counter(302, 3_650, null) }
+    }
+
+    @Test
+    fun clientAcceptsCounterThenSendsDocuments() = runTest {
+        val fb = FakeBackend(asRealtor = false)
+        val accepted = fb.applications.accept(302)
+        assertEquals(ApplicationStatus.ACCEPTED, accepted.status)
+        assertEquals(3_800L, accepted.agreedPrice)
+        assertEquals(Party.CLIENT, accepted.awaiting)
+        val sent = fb.applications.markDocsSent(302)
+        assertEquals(ApplicationStatus.DOCS_REVIEW, sent.status)
+        assertEquals(Party.REALTOR, sent.awaiting)
+        expectThrows<IllegalStateException> { fb.applications.markDocsSent(302) }
+    }
+
+    @Test
+    fun realtorAcceptsCountersAndDeclines() = runTest {
+        val fb = FakeBackend(asRealtor = true)
+        // 301: client's opening offer, realtor's turn
+        val o = fb.applications.counter(301, 4_750, "Proprietário pede 4.750")
+        assertEquals(Party.REALTOR, o.author)
+        assertEquals(Party.CLIENT, fb.applications.get(301).awaiting)
+        expectThrows<IllegalStateException> { fb.applications.accept(301) } // own offer / not our turn
+
+        val declined = fb.applications.decline(301, " Imóvel alugado ")
+        assertEquals(ApplicationStatus.REJECTED, declined.status)
+        assertEquals("Imóvel alugado", declined.reviewerNote)
+        assertEquals(null, declined.awaiting)
+        expectThrows<IllegalStateException> { fb.applications.decline(301) }
+    }
+
+    @Test
+    fun docsRequestedHandsTurnBackToClient() = runTest {
+        val fb = FakeBackend(asRealtor = true)
+        fb.applications.review(301, ApplicationStatus.DOCS_REQUESTED, "Falta holerite")
+        assertEquals(Party.CLIENT, fb.applications.get(301).awaiting)
+        assertEquals(0, fb.dashboard.stats().pendingApplications)
+    }
+
+    @Test
+    fun clientDeclineWithdraws() = runTest {
+        val fb = FakeBackend(asRealtor = false)
+        assertEquals(ApplicationStatus.WITHDRAWN, fb.applications.decline(302).status)
     }
 
     @Test

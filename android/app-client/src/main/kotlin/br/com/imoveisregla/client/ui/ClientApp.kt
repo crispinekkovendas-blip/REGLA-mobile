@@ -28,11 +28,13 @@ import br.com.imoveisregla.client.feature.listing.ListingDetailScreen
 import br.com.imoveisregla.client.feature.profile.DocumentsScreen
 import br.com.imoveisregla.client.feature.profile.EditProfileScreen
 import br.com.imoveisregla.client.feature.profile.ProfileScreen
+import br.com.imoveisregla.client.feature.proposals.ProposalDetailScreen
 import br.com.imoveisregla.client.feature.proposals.ProposalsScreen
 import br.com.imoveisregla.client.feature.search.SearchScreen
 import br.com.imoveisregla.client.feature.visit.BookVisitScreen
 import br.com.imoveisregla.client.feature.visits.VisitsScreen
 import br.com.imoveisregla.client.nav.ApplyRoute
+import br.com.imoveisregla.client.nav.ProposalDetailRoute
 import br.com.imoveisregla.client.nav.BookVisitRoute
 import br.com.imoveisregla.client.nav.DocumentsRoute
 import br.com.imoveisregla.client.nav.EditProfileRoute
@@ -96,8 +98,12 @@ fun ClientApp(nav: NavHostController = rememberNavController()) {
             composable<ProposalsRoute> {
                 ProposalsScreen(
                     onOpenListing = openListing, onRequireLogin = requireLogin,
-                    onOpenDocuments = { nav.navigate(DocumentsRoute) },
+                    onOpenProposal = { nav.navigate(ProposalDetailRoute(it)) },
                 )
+            }
+            composable<ProposalDetailRoute> { entry ->
+                val r = entry.toRoute<ProposalDetailRoute>()
+                ProposalDetailScreen(applicationId = r.id, onBack = { nav.popBackStack() }, onOpenListing = openListing)
             }
             composable<ProfileRoute> {
                 ProfileScreen(

@@ -21,6 +21,7 @@ import br.com.imoveisregla.core.model.ClientProfile
 import br.com.imoveisregla.core.model.ClientProfileInput
 import br.com.imoveisregla.core.model.DashboardStats
 import br.com.imoveisregla.core.model.DocumentKind
+import br.com.imoveisregla.core.model.GuaranteeType
 import br.com.imoveisregla.core.model.Inquiry
 import br.com.imoveisregla.core.model.InquiryStage
 import br.com.imoveisregla.core.model.LeadNote
@@ -28,6 +29,8 @@ import br.com.imoveisregla.core.model.Listing
 import br.com.imoveisregla.core.model.ListingFilters
 import br.com.imoveisregla.core.model.ListingRef
 import br.com.imoveisregla.core.model.ListingStatus
+import br.com.imoveisregla.core.model.Offer
+import br.com.imoveisregla.core.model.Party
 import br.com.imoveisregla.core.model.Priority
 import br.com.imoveisregla.core.model.Showing
 import br.com.imoveisregla.core.model.ShowingStatus
@@ -72,6 +75,7 @@ class FakeBackend(
     val favoriteRows = mutableSetOf<Pair<String, Long>>()
     val profileRows = mutableMapOf<String, ClientProfile>()
     val applicationRows = mutableListOf<Application>()
+    val offerRows = mutableListOf<Offer>()
     val documentRows = mutableListOf<ClientDocument>()
     val showingRows = mutableListOf<Showing>()
     val inquiryRows = mutableListOf<Inquiry>()
@@ -172,6 +176,46 @@ class FakeBackend(
     }
 
     // ── applications ──
+    /** Side the demo user plays in negotiations. */
+    private val party: Party get() = if (asRealtor) Party.REALTOR else Party.CLIENT
+
+    private fun awaitingFor(status: ApplicationStatus): Party? = when (status) {
+        ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.DOCS_REVIEW -> Party.REALTOR
+        ApplicationStatus.ACCEPTED, ApplicationStatus.DOCS_REQUESTED -> Party.CLIENT
+        else -> null
+    }
+
+    private fun hydrate(a: Application): Application = a.copy(
+        profile = profileRows[a.userId], listings = ref(a.listingId),
+        offers = offerRows.filter { it.applicationId == a.id }.sortedBy { it.id },
+    )
+
+    /** Index of an application the demo user may act on (realtor: any; client: own). */
+    private fun actionable(id: Long): Int {
+        val u = uid()
+        val i = applicationRows.indexOfFirst { it.id == id }
+        check(i >= 0) { "Proposta não encontrada" }
+        check(party == Party.REALTOR || applicationRows[i].userId == u) { "Proposta não encontrada" }
+        return i
+    }
+
+    private fun setStatus(
+        i: Int,
+        status: ApplicationStatus,
+        awaiting: Party? = awaitingFor(status),
+        edit: (Application) -> Application = { it },
+    ) {
+        val before = applicationRows[i]
+        applicationRows[i] = edit(before).copy(status = status, awaiting = awaiting, updatedAt = now())
+        if (status == ApplicationStatus.APPROVED) {
+            val li = inquiryRows.indexOfFirst { it.id == before.inquiryId }
+            if (li >= 0) inquiryRows[li] = inquiryRows[li].copy(stage = InquiryStage.CLOSED_WON)
+        }
+        emitChange()
+    }
+
+    private fun latestOffer(id: Long): Offer? = offerRows.filter { it.applicationId == id }.maxByOrNull { it.id }
+
     override val applications: ApplicationRepository = object : ApplicationRepository {
         override suspend fun submit(input: ApplicationInput): Application {
             val u = uid()
@@ -188,16 +232,20 @@ class FakeBackend(
                 id = nextId(), listingId = input.listingId, userId = u, intent = input.intent,
                 offeredPrice = input.offeredPrice, guaranteeType = input.guaranteeType,
                 moveInDate = input.moveInDate, message = input.message, inquiryId = inquiryId,
-                createdAt = now(), updatedAt = now(), listings = ref(input.listingId), profile = profile,
+                createdAt = now(), updatedAt = now(), awaiting = Party.REALTOR,
             )
             applicationRows += row
+            offerRows += Offer(
+                id = nextId(), applicationId = row.id, author = Party.CLIENT, authorId = u, price = input.offeredPrice,
+                guaranteeType = input.guaranteeType, moveInDate = input.moveInDate, message = input.message, createdAt = now(),
+            )
             emitChange()
-            return row
+            return hydrate(row)
         }
 
         override suspend fun mine(): List<Application> {
             val u = uid()
-            return applicationRows.filter { it.userId == u }.sortedByDescending { it.createdAt }
+            return applicationRows.filter { it.userId == u }.sortedByDescending { it.createdAt }.map(::hydrate)
         }
 
         override suspend fun withdraw(id: Long) {
@@ -205,28 +253,85 @@ class FakeBackend(
             val i = applicationRows.indexOfFirst { it.id == id && it.userId == u }
             check(i >= 0) { "Proposta não encontrada" }
             check(applicationRows[i].status.isOpen) { "Esta proposta não pode mais ser cancelada" }
-            applicationRows[i] = applicationRows[i].copy(status = ApplicationStatus.WITHDRAWN, updatedAt = now())
+            setStatus(i, ApplicationStatus.WITHDRAWN)
+        }
+
+        override suspend fun markDocsSent(id: Long): Application {
+            val i = actionable(id)
+            val st = applicationRows[i].status
+            check(party == Party.CLIENT && (st == ApplicationStatus.ACCEPTED || st == ApplicationStatus.DOCS_REQUESTED)) {
+                "Os documentos só podem ser enviados após a proposta ser aceita"
+            }
+            setStatus(i, ApplicationStatus.DOCS_REVIEW)
+            return hydrate(applicationRows[i])
+        }
+
+        override suspend fun get(id: Long): Application = hydrate(applicationRows[actionable(id)])
+
+        override suspend fun counter(
+            id: Long,
+            price: Long,
+            message: String?,
+            guaranteeType: GuaranteeType?,
+            moveInDate: String?,
+        ): Offer {
+            val i = actionable(id)
+            val app = applicationRows[i]
+            check(app.status.isNegotiation && app.awaiting == party) { "Aguarde a resposta da outra parte" }
+            require(price > 0) { "Informe um valor" }
+            val last = latestOffer(id)
+            val offer = Offer(
+                id = nextId(), applicationId = id, author = party, authorId = uid(), price = price,
+                guaranteeType = guaranteeType ?: last?.guaranteeType, moveInDate = moveInDate ?: last?.moveInDate,
+                message = message?.trim()?.takeIf { it.isNotEmpty() }, createdAt = now(),
+            )
+            offerRows += offer
+            setStatus(i, ApplicationStatus.NEGOTIATING, awaiting = if (party == Party.CLIENT) Party.REALTOR else Party.CLIENT)
+            return offer
+        }
+
+        override suspend fun accept(id: Long): Application {
+            val i = actionable(id)
+            val app = applicationRows[i]
+            check(app.status.isNegotiation && app.awaiting == party) { "Aguarde a resposta da outra parte" }
+            val last = latestOffer(id)
+            check(last != null && last.author != party) { "Você não pode aceitar a sua própria oferta" }
+            val reviewer = uid()
+            setStatus(i, ApplicationStatus.ACCEPTED) {
+                it.copy(
+                    agreedPrice = last.price,
+                    guaranteeType = last.guaranteeType ?: it.guaranteeType,
+                    moveInDate = last.moveInDate ?: it.moveInDate,
+                    reviewedBy = if (party == Party.REALTOR) reviewer else it.reviewedBy,
+                )
+            }
+            return hydrate(applicationRows[i])
+        }
+
+        override suspend fun decline(id: Long, note: String?): Application {
+            val i = actionable(id)
+            check(applicationRows[i].status.isOpen) { "Esta proposta já foi encerrada" }
+            if (party == Party.REALTOR) {
+                val reviewer = uid()
+                setStatus(i, ApplicationStatus.REJECTED) {
+                    it.copy(reviewerNote = note?.trim()?.takeIf { n -> n.isNotEmpty() }, reviewedBy = reviewer)
+                }
+            } else {
+                setStatus(i, ApplicationStatus.WITHDRAWN)
+            }
+            return hydrate(applicationRows[i])
         }
 
         override suspend fun forReview(status: ApplicationStatus?): List<Application> = applicationRows
             .filter { status == null || it.status == status }
-            .map { it.copy(profile = profileRows[it.userId], listings = ref(it.listingId)) }
             .sortedByDescending { it.createdAt }
-
-        override suspend fun get(id: Long): Application =
-            applicationRows.firstOrNull { it.id == id }
-                ?.let { it.copy(profile = profileRows[it.userId], listings = ref(it.listingId)) }
-                ?: throw NoSuchElementException("Proposta não encontrada")
+            .map(::hydrate)
 
         override suspend fun review(id: Long, status: ApplicationStatus, note: String?) {
             val i = applicationRows.indexOfFirst { it.id == id }
             check(i >= 0) { "Proposta não encontrada" }
-            val app = applicationRows[i]
-            applicationRows[i] = app.copy(status = status, reviewerNote = note, reviewedBy = uid(), updatedAt = now())
-            if (status == ApplicationStatus.APPROVED) {
-                val li = inquiryRows.indexOfFirst { it.id == app.inquiryId }
-                if (li >= 0) inquiryRows[li] = inquiryRows[li].copy(stage = InquiryStage.CLOSED_WON)
-            }
+            val reviewer = uid()
+            setStatus(i, status) { it.copy(reviewerNote = note, reviewedBy = reviewer) }
         }
     }
 
@@ -325,9 +430,7 @@ class FakeBackend(
             val today = OffsetDateTime.now(ZoneOffset.ofHours(-3)).toLocalDate()
             return DashboardStats(
                 newLeads = inquiryRows.count { it.stage == InquiryStage.INBOX },
-                pendingApplications = applicationRows.count {
-                    it.status == ApplicationStatus.SUBMITTED || it.status == ApplicationStatus.UNDER_REVIEW
-                },
+                pendingApplications = applicationRows.count { it.status.isOpen && it.awaiting == Party.REALTOR },
                 visitsToday = showingRows.count { OffsetDateTime.parse(it.startsAt).toLocalDate() == today },
                 liveListings = listingRows.count { it.status == ListingStatus.LIVE },
             )

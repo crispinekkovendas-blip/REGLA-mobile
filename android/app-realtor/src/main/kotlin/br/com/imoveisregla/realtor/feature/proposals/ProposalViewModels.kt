@@ -23,9 +23,9 @@ data class ProposalsState(
     val refreshing: Boolean = false,
     val error: String? = null,
     val all: List<Application> = emptyList(),
-    val filter: ApplicationStatus? = null,
+    val filter: ProposalFilter = ProposalFilter.ALL,
 ) {
-    val counts: Map<ApplicationStatus?, Int> get() = statusCounts(all)
+    val counts: Map<ProposalFilter, Int> get() = statusCounts(all)
     val visible: List<Application> get() = filterApplications(all, filter)
 }
 
@@ -35,7 +35,7 @@ class ProposalsViewModel(private val applications: ApplicationRepository) : View
 
     init { load() }
 
-    fun setFilter(status: ApplicationStatus?) = _state.update { it.copy(filter = status) }
+    fun setFilter(filter: ProposalFilter) = _state.update { it.copy(filter = filter) }
 
     fun refresh() = load(refreshing = true)
 
@@ -68,6 +68,7 @@ data class ApplicationDetailState(
     val message: String? = null,
 ) {
     val canAct: Boolean get() = application?.status?.isOpen == true && !submitting
+    val action: RealtorAction get() = application?.let(::realtorAction) ?: RealtorAction.CLOSED
 }
 
 class ApplicationDetailViewModel(
@@ -90,7 +91,9 @@ class ApplicationDetailViewModel(
             val app = applications.get(applicationId)
             _state.update { it.copy(loading = false, application = app) }
             try {
+                // This proposta's documents plus unlinked ones from the client's cadastro.
                 val docs = documents.list(userId = app.userId)
+                    .filter { it.applicationId == app.id || it.applicationId == null }
                 _state.update { it.copy(documents = docs, documentsError = null) }
             } catch (e: CancellationException) {
                 throw e
@@ -129,6 +132,50 @@ class ApplicationDetailViewModel(
             }
         }
         return null
+    }
+
+    /** Accept the client's latest offer → ACCEPTED (client is then asked for documents). */
+    fun accept() = act("Proposta aceita · o cliente vai enviar os documentos") { applications.accept(applicationId) }
+
+    /** Counter-offer on behalf of the owner. Returns a validation error or null when dispatched. */
+    fun counter(price: Long?, note: String?): String? {
+        val app = _state.value.application ?: return "Proposta não carregada"
+        validateCounter(price, app.currentPrice)?.let { err ->
+            _state.update { it.copy(message = err) }
+            return err
+        }
+        act("Contraproposta enviada ao cliente") {
+            applications.counter(applicationId, price!!, note?.trim()?.takeIf { it.isNotEmpty() })
+        }
+        return null
+    }
+
+    /** Reject with a note the client will see. */
+    fun decline(note: String?): String? {
+        val clean = note?.trim()?.takeIf { it.isNotEmpty() }
+        if (clean == null) {
+            _state.update { it.copy(message = "Escreva uma observação para o cliente") }
+            return "Escreva uma observação para o cliente"
+        }
+        act("Proposta recusada") { applications.decline(applicationId, clean) }
+        return null
+    }
+
+    private fun act(success: String, block: suspend () -> Any) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true) }
+        viewModelScope.launch {
+            try {
+                block()
+                _state.update { it.copy(submitting = false, message = success) }
+                reload()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(submitting = false, message = e.message ?: "Não foi possível atualizar a proposta") }
+                reload()
+            }
+        }
     }
 
     suspend fun documentUrl(doc: ClientDocument): String = documents.signedUrl(doc.storagePath)

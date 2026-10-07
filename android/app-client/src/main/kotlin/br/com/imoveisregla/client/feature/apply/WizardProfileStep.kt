@@ -41,7 +41,7 @@ fun WizardProfileStep(
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionTitle("Seus dados")
         Text(
-            "Usamos essas informações para analisar sua proposta. Elas ficam salvas no seu cadastro.",
+            "Para a proposta pedimos só seus dados, CPF e renda. Documentos só depois que o proprietário aceitar.",
             style = MaterialTheme.typography.bodyMedium, color = Regla.Muted,
         )
         ReglaTextField(
@@ -63,7 +63,7 @@ fun WizardProfileStep(
 
         Spacer(Modifier.width(4.dp))
         SectionTitle("Renda")
-        FieldLabel("Vínculo")
+        FieldLabel("Vínculo (opcional)")
         ChoiceChips(
             options = EmploymentType.entries,
             selected = draft.employmentType,

@@ -295,7 +295,7 @@ class SupabaseRepositoryTest {
         assertTrue(calls.all { it.method == HttpMethod.Head && it.prefer.contains("count=exact") })
         val byTable = calls.associateBy { it.path.substringAfterLast('/') }
         assertEquals("eq.inbox", byTable["inquiries"]!!.param("stage"))
-        assertEquals("in.(submitted,under_review)", byTable["applications"]!!.param("status"))
+        assertEquals("eq.realtor", byTable["applications"]!!.param("awaiting"))
         assertEquals("eq.live", byTable["listings"]!!.param("status"))
         assertRange(byTable["showings"]!!, "2026-10-06T00:00-03:00", "2026-10-07T00:00-03:00")
     }
@@ -309,15 +309,51 @@ class SupabaseRepositoryTest {
     }
 
     @Test
-    fun attachReinsertsAndDeletesOriginals() = runTest {
-        reply = { c -> if (c.method == HttpMethod.Get) Fixtures.DOCUMENTS else "" }
-        SupabaseDocumentRepository(client, user).attachToApplication(listOf(31), 5)
-        assertEquals(listOf(HttpMethod.Get, HttpMethod.Post, HttpMethod.Delete), calls.map { it.method })
-        val inserted = ReglaJson.parseToJsonElement(calls[1].body).jsonArray.single().jsonObject
-        assertEquals("5", inserted["application_id"]!!.jsonPrimitive.content)
-        assertEquals("u1/comprovante_renda/1759500000000-holerite_setembro.pdf", inserted["storage_path"]!!.jsonPrimitive.content)
-        assertFalse("id" in inserted)
-        assertEquals("in.(31)", calls[2].param("id"))
+    fun attachUpdatesApplicationId() = runTest {
+        SupabaseDocumentRepository(client, user).attachToApplication(listOf(31, 31, 32), 5)
+        val c = calls.single()
+        assertEquals(HttpMethod.Patch, c.method)
+        assertEquals("/rest/v1/client_documents", c.path)
+        assertEquals("in.(31,32)", c.param("id"))
+        assertEquals("eq.u1", c.param("user_id"))
+        assertEquals("5", c.jsonBody["application_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun counterCallsRpcWithParams() = runTest {
+        reply = { """{"id": 9, "application_id": 5, "author": "client", "price": 5200, "message": "Fecho"}""" }
+        val o = SupabaseApplicationRepository(client, user).counter(5, 5200, "  Fecho  ".trim(), GuaranteeType.FIADOR)
+        assertEquals(5200L, o.price)
+        val c = calls.single()
+        assertEquals("/rest/v1/rpc/proposal_counter", c.path)
+        assertEquals("5", c.jsonBody["p_application_id"]!!.jsonPrimitive.content)
+        assertEquals("5200", c.jsonBody["p_price"]!!.jsonPrimitive.content)
+        assertEquals("fiador", c.jsonBody["p_guarantee_type"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun acceptCallsRpcThenRereads() = runTest {
+        reply = { c ->
+            if (c.path.endsWith("/rpc/proposal_accept")) "{}"
+            else """[{"id": 5, "listing_id": 3, "user_id": "u1", "intent": "rent", "offered_price": 5000,
+                      "status": "accepted", "agreed_price": 5200, "awaiting": "client",
+                      "application_offers": [
+                        {"id": 2, "application_id": 5, "author": "realtor", "price": 5200, "created_at": "2026-10-06T11:00:00-03:00"},
+                        {"id": 1, "application_id": 5, "author": "client", "price": 5000, "created_at": "2026-10-06T10:00:00-03:00"}]}]"""
+        }
+        val app = SupabaseApplicationRepository(client, user).accept(5)
+        assertEquals(listOf("/rest/v1/rpc/proposal_accept", "/rest/v1/applications"), calls.map { it.path })
+        assertEquals(5200L, app.agreedPrice)
+        assertEquals(listOf(1L, 2L), app.offers.map { it.id })
+        assertTrue(calls[1].param("select")!!.contains("application_offers(*)"))
+    }
+
+    @Test
+    fun lifecycleRpcsRequireLogin() = runTest {
+        val repo = SupabaseApplicationRepository(client, nobody)
+        expectThrows<NotAuthenticatedException> { repo.markDocsSent(5) }
+        expectThrows<NotAuthenticatedException> { repo.counter(5, 1, null) }
+        assertTrue(calls.isEmpty())
     }
 
     @Test

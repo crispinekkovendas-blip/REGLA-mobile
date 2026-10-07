@@ -5,6 +5,7 @@ import br.com.imoveisregla.core.model.ApplicationIntent
 import br.com.imoveisregla.core.model.ApplicationStatus
 import br.com.imoveisregla.core.model.ClientDocument
 import br.com.imoveisregla.core.model.DocumentKind
+import br.com.imoveisregla.core.model.Party
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -14,44 +15,54 @@ import java.time.ZoneOffset
 
 class ProposalsLogicTest {
 
-    private fun app(id: Long, status: ApplicationStatus) = Application(
+    private fun app(id: Long, status: ApplicationStatus, awaiting: Party? = null) = Application(
         id = id, listingId = 1, userId = "u$id", intent = ApplicationIntent.RENT, offeredPrice = 4_000, status = status,
+        awaiting = awaiting,
     )
 
     @Test
-    fun statusCounts_countsEveryFilterIncludingZeroAndTotal() {
+    fun statusCounts_countsEveryFilterIncludingZero() {
         val apps = listOf(
-            app(1, ApplicationStatus.SUBMITTED),
-            app(2, ApplicationStatus.SUBMITTED),
-            app(3, ApplicationStatus.UNDER_REVIEW),
-            app(4, ApplicationStatus.APPROVED),
-            app(5, ApplicationStatus.WITHDRAWN),
+            app(1, ApplicationStatus.SUBMITTED, Party.REALTOR),
+            app(2, ApplicationStatus.NEGOTIATING, Party.CLIENT),
+            app(3, ApplicationStatus.DOCS_REVIEW, Party.REALTOR),
+            app(4, ApplicationStatus.APPROVED, null),
+            app(5, ApplicationStatus.WITHDRAWN, null),
         )
         val counts = statusCounts(apps)
-        assertEquals(PROPOSAL_FILTERS.size, counts.size)
-        assertEquals(5, counts[null])
-        assertEquals(2, counts[ApplicationStatus.SUBMITTED])
-        assertEquals(1, counts[ApplicationStatus.UNDER_REVIEW])
-        assertEquals(0, counts[ApplicationStatus.DOCS_REQUESTED])
-        assertEquals(1, counts[ApplicationStatus.APPROVED])
-        assertEquals(0, counts[ApplicationStatus.REJECTED])
-        assertEquals(1, counts[ApplicationStatus.WITHDRAWN])
+        assertEquals(ProposalFilter.entries.size, counts.size)
+        assertEquals(5, counts[ProposalFilter.ALL])
+        assertEquals(2, counts[ProposalFilter.YOUR_TURN])
+        assertEquals(2, counts[ProposalFilter.NEGOTIATION])
+        assertEquals(1, counts[ProposalFilter.DOCUMENTS])
+        assertEquals(1, counts[ProposalFilter.APPROVED])
+        assertEquals(1, counts[ProposalFilter.CLOSED])
     }
 
     @Test
-    fun filterApplications_nullReturnsAll() {
-        val apps = listOf(app(1, ApplicationStatus.SUBMITTED), app(2, ApplicationStatus.APPROVED))
-        assertEquals(2, filterApplications(apps, null).size)
-        assertEquals(listOf(2L), filterApplications(apps, ApplicationStatus.APPROVED).map { it.id })
-        assertEquals(emptyList<Application>(), filterApplications(apps, ApplicationStatus.REJECTED))
+    fun filterApplications_byFilter() {
+        val apps = listOf(app(1, ApplicationStatus.SUBMITTED, Party.REALTOR), app(2, ApplicationStatus.APPROVED, null))
+        assertEquals(2, filterApplications(apps, ProposalFilter.ALL).size)
+        assertEquals(listOf(2L), filterApplications(apps, ProposalFilter.APPROVED).map { it.id })
+        assertEquals(emptyList<Application>(), filterApplications(apps, ProposalFilter.CLOSED))
     }
 
     @Test
     fun filterLabels_arePortuguese() {
         assertEquals(
-            listOf("Todas", "Enviada", "Em análise", "Documentos pendentes", "Aprovada", "Recusada", "Cancelada"),
-            PROPOSAL_FILTERS.map { filterLabel(it) },
+            listOf("Todas", "Sua vez", "Negociação", "Documentos", "Aprovadas", "Encerradas"),
+            ProposalFilter.entries.map { it.label },
         )
+    }
+
+    @Test
+    fun realtorAction_followsTurn() {
+        assertEquals(RealtorAction.RESPOND_OFFER, realtorAction(app(1, ApplicationStatus.SUBMITTED, Party.REALTOR)))
+        assertEquals(RealtorAction.RESPOND_OFFER, realtorAction(app(1, ApplicationStatus.NEGOTIATING, Party.REALTOR)))
+        assertEquals(RealtorAction.WAIT_CLIENT, realtorAction(app(1, ApplicationStatus.NEGOTIATING, Party.CLIENT)))
+        assertEquals(RealtorAction.WAIT_CLIENT, realtorAction(app(1, ApplicationStatus.ACCEPTED, Party.CLIENT)))
+        assertEquals(RealtorAction.REVIEW_DOCS, realtorAction(app(1, ApplicationStatus.DOCS_REVIEW, Party.REALTOR)))
+        assertEquals(RealtorAction.CLOSED, realtorAction(app(1, ApplicationStatus.REJECTED, null)))
     }
 
     @Test
@@ -79,20 +90,26 @@ class ProposalsLogicTest {
         // closed proposals cannot be acted on
         assertNotNull(validateReview(ApplicationStatus.APPROVED, ApplicationStatus.REJECTED, "x"))
         assertNotNull(validateReview(ApplicationStatus.WITHDRAWN, ApplicationStatus.APPROVED, null))
-        // note required for rejection / docs request
-        assertEquals(
-            "Escreva uma observação para o cliente",
-            validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.REJECTED, "  "),
-        )
-        assertNotNull(validateReview(ApplicationStatus.SUBMITTED, ApplicationStatus.DOCS_REQUESTED, null))
-        assertNull(validateReview(ApplicationStatus.SUBMITTED, ApplicationStatus.DOCS_REQUESTED, "Envie o RG"))
-        // approve / under review don't need a note
-        assertNull(validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED, null))
+        // negotiation phase: only "em análise" (from submitted) and rejection
         assertNull(validateReview(ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, null))
-        // no-op / invalid targets
-        assertNotNull(validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.UNDER_REVIEW, null))
-        assertNotNull(validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.WITHDRAWN, "x"))
-        assertNotNull(validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.SUBMITTED, "x"))
+        assertEquals("Ação indisponível nesta etapa", validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED, null))
+        assertEquals("Ação indisponível nesta etapa", validateReview(ApplicationStatus.NEGOTIATING, ApplicationStatus.DOCS_REQUESTED, "x"))
+        assertEquals("Escreva uma observação para o cliente", validateReview(ApplicationStatus.UNDER_REVIEW, ApplicationStatus.REJECTED, "  "))
+        assertNull(validateReview(ApplicationStatus.NEGOTIATING, ApplicationStatus.REJECTED, "Sem acordo"))
+        // documents phase
+        assertNull(validateReview(ApplicationStatus.DOCS_REVIEW, ApplicationStatus.APPROVED, null))
+        assertNotNull(validateReview(ApplicationStatus.DOCS_REVIEW, ApplicationStatus.DOCS_REQUESTED, null))
+        assertNull(validateReview(ApplicationStatus.DOCS_REVIEW, ApplicationStatus.DOCS_REQUESTED, "Envie o RG"))
+        // no-op
+        assertNotNull(validateReview(ApplicationStatus.DOCS_REQUESTED, ApplicationStatus.DOCS_REQUESTED, "x"))
+    }
+
+    @Test
+    fun validateCounter_rules() {
+        assertEquals("Informe um valor", validateCounter(null, 4_600))
+        assertEquals("Informe um valor", validateCounter(0, 4_600))
+        assertEquals("Informe um valor diferente da oferta atual", validateCounter(4_600, 4_600))
+        assertNull(validateCounter(4_750, 4_600))
     }
 
     @Test
@@ -128,12 +145,14 @@ class ProposalsLogicTest {
 
     @Test
     fun timeline_reflectsStatus() {
-        val docs = timelineSteps(app(1, ApplicationStatus.DOCS_REQUESTED)).map { it.label }
-        assertEquals(listOf("Enviada", "Em análise", "Documentos pendentes", "Decisão"), docs)
-        val approved = timelineSteps(app(1, ApplicationStatus.APPROVED))
+        val docs = timelineSteps(app(1, ApplicationStatus.DOCS_REQUESTED, Party.CLIENT)).map { it.label }
+        assertEquals(listOf("Enviada", "Negociação", "Aceita", "Correção", "Contrato"), docs)
+        val approved = timelineSteps(app(1, ApplicationStatus.APPROVED, null))
         assertEquals("Aprovada", approved.last().label)
         assertEquals(true, approved.all { it.done })
-        val submitted = timelineSteps(app(1, ApplicationStatus.SUBMITTED))
-        assertEquals(listOf(true, false, false), submitted.map { it.done })
+        val submitted = timelineSteps(app(1, ApplicationStatus.SUBMITTED, Party.REALTOR))
+        assertEquals(listOf(true, false, false, false, false), submitted.map { it.done })
+        val rejected = timelineSteps(app(1, ApplicationStatus.REJECTED, null)).map { it.label }
+        assertEquals(listOf("Enviada", "Negociação", "Recusada"), rejected)
     }
 }

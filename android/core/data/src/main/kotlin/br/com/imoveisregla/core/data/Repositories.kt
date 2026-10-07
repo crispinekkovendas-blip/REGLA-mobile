@@ -66,14 +66,39 @@ interface ProfileRepository {
     suspend fun save(input: ClientProfileInput): ClientProfile
 }
 
+/**
+ * Propostas, QuintoAndar-style (migration 0014):
+ * submit (cadastro + CPF + renda, no documents) → negotiation (accept / counter /
+ * decline, whoever is `awaiting` acts) → ACCEPTED → client uploads documents and
+ * calls [markDocsSent] → DOCS_REVIEW → realtor [review]s to APPROVED, or
+ * DOCS_REQUESTED for corrections.
+ *
+ * Rows include `listings`, `offers` (oldest first) and, for the realtor, `profile`.
+ * The caller's side is implied by who is signed in (realtor = is_admin).
+ */
 interface ApplicationRepository {
     // client
     suspend fun submit(input: ApplicationInput): Application
     suspend fun mine(): List<Application>
     suspend fun withdraw(id: Long)
-    // realtor (requires is_admin) — rows include `listings` and `profile`
-    suspend fun forReview(status: ApplicationStatus? = null): List<Application>
+    /** Client: documents uploaded for an ACCEPTED / DOCS_REQUESTED proposta. */
+    suspend fun markDocsSent(id: Long): Application
+    // both sides (turn-checked server-side)
     suspend fun get(id: Long): Application
+    suspend fun counter(
+        id: Long,
+        price: Long,
+        message: String?,
+        guaranteeType: GuaranteeType? = null,
+        moveInDate: String? = null,
+    ): Offer
+    /** Accept the other side's latest offer → ACCEPTED with agreedPrice. */
+    suspend fun accept(id: Long): Application
+    /** Realtor → REJECTED (with note); client → WITHDRAWN. */
+    suspend fun decline(id: Long, note: String? = null): Application
+    // realtor (requires is_admin)
+    suspend fun forReview(status: ApplicationStatus? = null): List<Application>
+    /** Direct status moves: UNDER_REVIEW, DOCS_REQUESTED, APPROVED, REJECTED. */
     suspend fun review(id: Long, status: ApplicationStatus, note: String?)
 }
 

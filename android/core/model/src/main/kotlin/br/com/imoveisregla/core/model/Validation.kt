@@ -6,6 +6,10 @@ package br.com.imoveisregla.core.model
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
 
+/**
+ * [requireFinancials] = proposta mode: CPF and monthly income become mandatory
+ * (QuintoAndar asks for them with the offer; documents come only after acceptance).
+ */
 fun validateProfile(p: ClientProfileInput, requireFinancials: Boolean = false): Map<String, String> = buildMap {
     if (p.fullName.trim().length < 3) put("fullName", "Informe seu nome completo")
     if (!EMAIL.matches(p.email.trim())) put("email", "E-mail inválido")
@@ -16,7 +20,6 @@ fun validateProfile(p: ClientProfileInput, requireFinancials: Boolean = false): 
     p.birthDate?.takeIf { it.isNotBlank() }?.let { if (!DATE.matches(it)) put("birthDate", "Use AAAA-MM-DD") }
     if (p.monthlyIncome != null && p.monthlyIncome < 0) put("monthlyIncome", "Renda inválida")
     if (requireFinancials && (p.monthlyIncome == null || p.monthlyIncome <= 0)) put("monthlyIncome", "Informe sua renda mensal")
-    if (requireFinancials && p.employmentType == null) put("employmentType", "Selecione o tipo de vínculo")
     if (p.residents !in 1..20) put("residents", "Entre 1 e 20 moradores")
 }
 

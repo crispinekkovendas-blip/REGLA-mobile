@@ -58,7 +58,9 @@ class ValidationTest {
         assertEquals("Renda inválida", validateProfile(okProfile.copy(monthlyIncome = -1))["monthlyIncome"])
         val fin = validateProfile(okProfile.copy(monthlyIncome = null, employmentType = null), requireFinancials = true)
         assertEquals("Informe sua renda mensal", fin["monthlyIncome"])
-        assertEquals("Selecione o tipo de vínculo", fin["employmentType"])
+        // proposta mode needs CPF + income only; vínculo is optional (asked with the documents)
+        assertEquals(setOf("monthlyIncome"), fin.keys)
+        assertEquals("Informe seu CPF", validateProfile(okProfile.copy(cpf = null), requireFinancials = true)["cpf"])
         assertEquals("Informe sua renda mensal", validateProfile(okProfile.copy(monthlyIncome = 0), requireFinancials = true)["monthlyIncome"])
         // not required → missing financials are fine
         assertTrue(validateProfile(okProfile.copy(monthlyIncome = null, employmentType = null)).isEmpty())

@@ -85,6 +85,9 @@ internal data class ApplicationReviewPatch(
 internal data class ApplicationStatusPatch(val status: ApplicationStatus)
 
 @Serializable
+internal data class DocumentApplicationPatch(@SerialName("application_id") val applicationId: Long)
+
+@Serializable
 internal data class ListingStatusPatch(val status: ListingStatus)
 
 @Serializable

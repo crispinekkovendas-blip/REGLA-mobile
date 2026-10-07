@@ -16,6 +16,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ListingDetailRoute(val id: Long)
 @Serializable data class BookVisitRoute(val listingId: Long)
 @Serializable data class ApplyRoute(val listingId: Long)
+@Serializable data class ProposalDetailRoute(val id: Long)
 @Serializable data object LoginRoute
 @Serializable data object SignupRoute
 @Serializable data object EditProfileRoute

@@ -49,6 +49,9 @@ object PillPalette {
 fun ApplicationStatus.pillColors(): PillColors = when (this) {
     ApplicationStatus.SUBMITTED -> PillPalette.Info
     ApplicationStatus.UNDER_REVIEW -> PillPalette.Warn
+    ApplicationStatus.NEGOTIATING -> PillPalette.Navy
+    ApplicationStatus.ACCEPTED -> PillPalette.Ok
+    ApplicationStatus.DOCS_REVIEW -> PillPalette.Info
     ApplicationStatus.DOCS_REQUESTED -> PillPalette.Brand
     ApplicationStatus.APPROVED -> PillPalette.Ok
     ApplicationStatus.REJECTED -> PillPalette.Danger

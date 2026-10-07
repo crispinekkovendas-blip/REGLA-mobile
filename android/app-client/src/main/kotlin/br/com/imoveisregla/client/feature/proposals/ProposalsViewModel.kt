@@ -21,37 +21,34 @@ enum class TimelineState { DONE, CURRENT, WARNING, FAILED, PENDING }
 
 data class TimelineStep(val label: String, val state: TimelineState)
 
-/** Horizontal status timeline: Enviada → Em análise → Aprovada/Recusada. */
-fun proposalTimeline(status: ApplicationStatus): List<TimelineStep> = when (status) {
-    ApplicationStatus.SUBMITTED -> listOf(
-        TimelineStep("Enviada", TimelineState.CURRENT),
-        TimelineStep("Em análise", TimelineState.PENDING),
-        TimelineStep("Aprovada", TimelineState.PENDING),
-    )
-    ApplicationStatus.UNDER_REVIEW -> listOf(
-        TimelineStep("Enviada", TimelineState.DONE),
-        TimelineStep("Em análise", TimelineState.CURRENT),
-        TimelineStep("Aprovada", TimelineState.PENDING),
-    )
-    ApplicationStatus.DOCS_REQUESTED -> listOf(
-        TimelineStep("Enviada", TimelineState.DONE),
-        TimelineStep("Documentos pendentes", TimelineState.WARNING),
-        TimelineStep("Aprovada", TimelineState.PENDING),
-    )
-    ApplicationStatus.APPROVED -> listOf(
-        TimelineStep("Enviada", TimelineState.DONE),
-        TimelineStep("Em análise", TimelineState.DONE),
-        TimelineStep("Aprovada", TimelineState.DONE),
-    )
-    ApplicationStatus.REJECTED -> listOf(
-        TimelineStep("Enviada", TimelineState.DONE),
-        TimelineStep("Em análise", TimelineState.DONE),
-        TimelineStep("Recusada", TimelineState.FAILED),
-    )
-    ApplicationStatus.WITHDRAWN -> listOf(
-        TimelineStep("Enviada", TimelineState.DONE),
-        TimelineStep("Cancelada", TimelineState.FAILED),
-    )
+/** Horizontal status timeline: Enviada → Negociação → Documentos → Aprovada (or Recusada / Cancelada). */
+fun proposalTimeline(status: ApplicationStatus): List<TimelineStep> {
+    val d = TimelineState.DONE
+    val p = TimelineState.PENDING
+    return when (status) {
+        ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW -> listOf(
+            TimelineStep("Enviada", TimelineState.CURRENT), TimelineStep("Negociação", p),
+            TimelineStep("Documentos", p), TimelineStep("Aprovada", p),
+        )
+        ApplicationStatus.NEGOTIATING -> listOf(
+            TimelineStep("Enviada", d), TimelineStep("Negociação", TimelineState.CURRENT),
+            TimelineStep("Documentos", p), TimelineStep("Aprovada", p),
+        )
+        ApplicationStatus.ACCEPTED, ApplicationStatus.DOCS_REQUESTED -> listOf(
+            TimelineStep("Enviada", d), TimelineStep("Negociação", d),
+            TimelineStep("Documentos", TimelineState.WARNING), TimelineStep("Aprovada", p),
+        )
+        ApplicationStatus.DOCS_REVIEW -> listOf(
+            TimelineStep("Enviada", d), TimelineStep("Negociação", d),
+            TimelineStep("Documentos", TimelineState.CURRENT), TimelineStep("Aprovada", p),
+        )
+        ApplicationStatus.APPROVED -> listOf(
+            TimelineStep("Enviada", d), TimelineStep("Negociação", d),
+            TimelineStep("Documentos", d), TimelineStep("Aprovada", d),
+        )
+        ApplicationStatus.REJECTED -> listOf(TimelineStep("Enviada", d), TimelineStep("Recusada", TimelineState.FAILED))
+        ApplicationStatus.WITHDRAWN -> listOf(TimelineStep("Enviada", d), TimelineStep("Cancelada", TimelineState.FAILED))
+    }
 }
 
 private val BR_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")

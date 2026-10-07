@@ -75,6 +75,30 @@ class SerializationTest {
         assertFalse(ApplicationStatus.APPROVED.isOpen)
         assertFalse(ApplicationStatus.REJECTED.isOpen)
         assertFalse(ApplicationStatus.WITHDRAWN.isOpen)
+        assertTrue(ApplicationStatus.NEGOTIATING.isOpen && ApplicationStatus.NEGOTIATING.isNegotiation)
+        assertTrue(ApplicationStatus.ACCEPTED.isOpen && ApplicationStatus.ACCEPTED.isDocumentsPhase)
+        assertTrue(ApplicationStatus.DOCS_REVIEW.isDocumentsPhase && !ApplicationStatus.DOCS_REVIEW.isNegotiation)
+        assertEquals("\"docs_review\"", json.encodeToString(ApplicationStatus.serializer(), ApplicationStatus.DOCS_REVIEW))
+    }
+
+    @Test fun application_decodesNegotiation() {
+        val app = json.decodeFromString(
+            Application.serializer(),
+            """
+            {"id": 7, "listing_id": 3, "user_id": "u1", "intent": "rent", "offered_price": 5000,
+             "status": "negotiating", "awaiting": "client", "agreed_price": null,
+             "application_offers": [
+               {"id": 1, "application_id": 7, "author": "client", "price": 5000, "created_at": "2026-10-06T10:00:00-03:00"},
+               {"id": 2, "application_id": 7, "author": "realtor", "price": 5500, "message": "Pede 5.500", "created_at": "2026-10-06T11:00:00-03:00"}
+             ]}
+            """.trimIndent(),
+        )
+        assertEquals(Party.CLIENT, app.awaiting)
+        assertEquals(Party.REALTOR, app.latestOffer?.author)
+        assertEquals(5500L, app.currentPrice)
+        assertTrue(app.isTurnOf(Party.CLIENT))
+        assertFalse(app.isTurnOf(Party.REALTOR))
+        assertEquals(5200L, app.copy(agreedPrice = 5200).currentPrice)
     }
 
     @Test fun listing_decodesSupabaseRow() {

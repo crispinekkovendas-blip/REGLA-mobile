@@ -37,11 +37,10 @@ class ProposalsScreenTest {
         }
         compose.waitForIdle()
 
-        compose.onNodeWithText("Mariana Souza").assertIsDisplayed()
         compose.onNodeWithText("Apartamento com varanda em Pinheiros").assertIsDisplayed()
         compose.onNodeWithTag("status-301", useUnmergedTree = true).onChildren().assertAny(hasText("Em análise"))
-        compose.onNodeWithText("Todas (1)").assertExists()
-        compose.onNodeWithText("Em análise (1)").assertExists()
+        compose.onNodeWithText("Todas (2)").assertExists()
+        compose.onNodeWithText("Sua vez (1)").assertExists()
         compose.onNodeWithText("-4,2%").assertExists()
 
         compose.onNodeWithTag("proposal-301").performClick()
@@ -50,10 +49,10 @@ class ProposalsScreenTest {
         compose.onNodeWithTag("filter-APPROVED").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Nada por aqui").assertIsDisplayed()
-        compose.onNodeWithText("Mariana Souza").assertDoesNotExist()
+        compose.onNodeWithTag("proposal-301").assertDoesNotExist()
 
         compose.onNodeWithText("Ver todas").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Mariana Souza").assertIsDisplayed()
+        compose.onNodeWithTag("proposal-301").assertIsDisplayed()
     }
 }
