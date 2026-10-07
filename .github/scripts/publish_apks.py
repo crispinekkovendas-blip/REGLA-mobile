@@ -3,11 +3,12 @@
 
 1. Writes android/dist/manifest.json (version, build time, commit, sizes).
 2. Asks the website for signed Supabase Storage upload URLs
-   (POST /api/app-release, Bearer APP_RELEASE_TOKEN).
+   (POST /api/app-release, Bearer = the run's GitHub Actions OIDC token; the
+   site verifies it was issued to REGLA-mobile@main — no stored secret).
 3. PUTs every file straight to Storage (APKs are too big for a Vercel function).
    The manifest goes last, so the page never points at half-uploaded APKs.
 
-Env: APP_RELEASE_TOKEN, APP_VERSION_CODE, GITHUB_SHA, GITHUB_SERVER_URL,
+Env: RELEASE_BEARER (OIDC JWT), APP_VERSION_CODE, GITHUB_SHA, GITHUB_SERVER_URL,
      GITHUB_REPOSITORY, GITHUB_RUN_ID, RELEASE_ENDPOINT (optional).
 """
 import json
@@ -45,7 +46,7 @@ req = urllib.request.Request(
     ENDPOINT,
     data=json.dumps({"files": list(files)}).encode(),
     headers={
-        "Authorization": f"Bearer {os.environ['APP_RELEASE_TOKEN']}",
+        "Authorization": f"Bearer {os.environ['RELEASE_BEARER']}",
         "Content-Type": "application/json",
         "User-Agent": "regla-mobile-ci",
     },
