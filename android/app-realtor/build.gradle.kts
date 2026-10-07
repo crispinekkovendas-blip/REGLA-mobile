@@ -11,13 +11,32 @@ android {
         applicationId = "br.com.imoveisregla.realtor"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI passes the GitHub run number so every published build installs over the last one.
+        val build = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
+    }
+    // Stable REGLA signing key from CI secrets (keystore kept outside the repo). Without it every
+    // runner signs with a throwaway debug key and Android refuses to update an installed app.
+    val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        if (keystorePath != null) {
+            create("regla") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = "regla"
+                keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
     }
     buildTypes {
+        val signing = signingConfigs.findByName("regla") ?: signingConfigs.getByName("debug")
+        debug {
+            signingConfig = signing
+        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signing
         }
     }
     buildFeatures { compose = true }
