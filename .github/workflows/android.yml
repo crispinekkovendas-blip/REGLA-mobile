@@ -64,7 +64,7 @@ jobs:
           cp app-client/build/outputs/apk/debug/*.apk dist/live/regla-cliente.apk
           cp app-realtor/build/outputs/apk/debug/*.apk dist/live/regla-corretor.apk
       - name: Publish to imoveisregla.com.br/app
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
         run: |
           RELEASE_BEARER=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=imoveisregla.com.br" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
