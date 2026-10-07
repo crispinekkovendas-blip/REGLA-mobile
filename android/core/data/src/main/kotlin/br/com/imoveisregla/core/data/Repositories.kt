@@ -8,12 +8,14 @@ import br.com.imoveisregla.core.model.ClientProfile
 import br.com.imoveisregla.core.model.ClientProfileInput
 import br.com.imoveisregla.core.model.DashboardStats
 import br.com.imoveisregla.core.model.DocumentKind
+import br.com.imoveisregla.core.model.GuaranteeType
 import br.com.imoveisregla.core.model.Inquiry
 import br.com.imoveisregla.core.model.InquiryStage
 import br.com.imoveisregla.core.model.LeadNote
 import br.com.imoveisregla.core.model.Listing
 import br.com.imoveisregla.core.model.ListingFilters
 import br.com.imoveisregla.core.model.ListingStatus
+import br.com.imoveisregla.core.model.Offer
 import br.com.imoveisregla.core.model.Priority
 import br.com.imoveisregla.core.model.Showing
 import br.com.imoveisregla.core.model.ShowingStatus

@@ -44,14 +44,18 @@ object PillPalette {
     val Brand = PillColors(Regla.CoralInk, Regla.CoralSoft)
     val Navy = PillColors(Regla.Navy, Regla.NavySoft)
     val Neutral = PillColors(Regla.Muted, Regla.Line)
+    /** Accepted proposta (deal agreed, documents pending). */
+    val Teal = PillColors(Color(0xFF0E7C74), Color(0xFFE0F4F1))
+    /** Documents under analysis. */
+    val Plum = PillColors(Color(0xFF6B3FA0), Color(0xFFF1EAFB))
 }
 
 fun ApplicationStatus.pillColors(): PillColors = when (this) {
     ApplicationStatus.SUBMITTED -> PillPalette.Info
     ApplicationStatus.UNDER_REVIEW -> PillPalette.Warn
     ApplicationStatus.NEGOTIATING -> PillPalette.Navy
-    ApplicationStatus.ACCEPTED -> PillPalette.Ok
-    ApplicationStatus.DOCS_REVIEW -> PillPalette.Info
+    ApplicationStatus.ACCEPTED -> PillPalette.Teal
+    ApplicationStatus.DOCS_REVIEW -> PillPalette.Plum
     ApplicationStatus.DOCS_REQUESTED -> PillPalette.Brand
     ApplicationStatus.APPROVED -> PillPalette.Ok
     ApplicationStatus.REJECTED -> PillPalette.Danger
